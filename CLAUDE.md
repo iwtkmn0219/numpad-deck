@@ -17,6 +17,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `inject.rs`: `dwExtraInfo` 서명(`SIGNATURE`)을 붙인 `SendInput`.
 - `bin/deck-probe.rs`: M1 검증용 콘솔 프로그램.
 
+## 작업 방식
+
+- 사용자에게 물어볼 것이 있으면 텍스트로 나열하지 말고 **질의응답 도구(AskUserQuestion)로 한 번에 하나씩** 묻는다. 답을 받은 뒤 다음 질문으로 넘어간다.
+
 ## 빌드·실행 명령
 
 Rust stable(MSVC) + VS 2022 Build Tools 필요. Git Bash에서는 `~/.cargo/bin`이 PATH에 없을 수 있다.
@@ -101,7 +105,7 @@ NumLock 상태는 캐싱하지 말고 **키 입력마다 다시 조회한다.** 
 
 ## 주의할 함정
 
-- **Shift + 넘패드**: Windows가 가짜 Shift 이벤트를 끼워 넣어 키 판정이 틀어진다. 조합별 테스트 케이스가 필요하다.
+- **Shift + 넘패드**: NumLock ON + Shift + 넘패드 7이면 Windows가 가짜 Shift 업(`sc=0x22A`, 스캔 코드 0x200 비트, 확장 플래그 없음) → `VK_HOME`(확장 없음) → 넘패드 키 업 → 가짜 Shift 다운(`sc=0x2A`, 진짜와 구분 불가)을 보낸다(M1 실측). 덱 판정은 `GetKeyState(VK_NUMLOCK)`로 정확했다. 단축키 녹화에서는 가짜 Shift 업을 무시해야 한다.
 - **UIPI**: 관리자 권한 창(작업 관리자 등)이 앞에 있으면 일반 권한 훅은 입력을 받지 못하고 넘패드가 평소처럼 동작한다. v1.0은 안내만 한다.
 - **배포**: Microsoft Store(MSIX, Microsoft 서명) 우선, GitHub(NSIS + updater)·winget 보조. Store 빌드에서는 Tauri updater를 끈다.
 - **OSD 활성화**: Tauri의 창 표시가 창을 활성화할 수 있으므로 `WS_EX_NOACTIVATE` / `SW_SHOWNOACTIVATE`를 직접 지정한다. OSD 창은 하나만 미리 만들어 숨겨 두고, 편집기 창은 닫을 때 파기한다.

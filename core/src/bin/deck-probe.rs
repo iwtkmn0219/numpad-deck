@@ -172,6 +172,9 @@ fn format_trace(t: &Trace, mismatch: bool) -> String {
     if t.injected {
         flags.push_str(if t.ours { " inj:self" } else { " inj" });
     }
+    if t.scan & 0x200 != 0 {
+        flags.push_str(" 가짜");
+    }
     let warn = if mismatch {
         format!(
             "  ⚠ NumLock 불일치: GetKeyState={numlock} VK추정={}",

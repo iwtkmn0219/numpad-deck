@@ -123,7 +123,15 @@ struct State {
     gate: KeyGate,
     events: Sender<HookEvent>,
     trace: bool,
+    /// 사용자가 실제로 Shift를 누르고 있는지. Windows가 끼워 넣는 가짜 Shift 업은
+    /// 무시한다. 진단용 `numlock_hint`에만 쓴다.
+    shift_held: bool,
 }
+
+/// Windows가 NumLock ON + Shift + 넘패드 때 끼워 넣는 가짜 Shift 업은 스캔 코드에
+/// 이 비트가 붙어 들어온다 (실측: `0x22A`). 확장 플래그는 붙지 않는다.
+/// 뒤따르는 가짜 Shift 다운은 일반 `0x2A`로 들어와 구분되지 않는다.
+const SIMULATED_SCAN: u32 = 0x200;
 
 thread_local! {
     static STATE: RefCell<Option<State>> = const { RefCell::new(None) };
@@ -141,6 +149,7 @@ fn run(config: HookConfig, events: Sender<HookEvent>, ready: Sender<Result<u32, 
             gate: KeyGate::new(),
             events: events.clone(),
             trace: config.trace,
+            shift_held: false,
         })
     });
 
@@ -234,6 +243,16 @@ fn handle(info: &KBDLLHOOKSTRUCT, down: bool) -> bool {
             let _ = state.events.send(HookEvent::Fire(k));
         }
 
+        if is_shift_vk(raw.vk) && !injected && info.scanCode & SIMULATED_SCAN == 0 {
+            state.shift_held = down;
+        }
+        // Shift를 누른 채면 NumLock ON이어도 이동 키 형태로 들어오므로 VK로 짐작할 수 없다.
+        let hint = if injected || state.shift_held {
+            None
+        } else {
+            numlock_hint(raw)
+        };
+
         if state.trace && (key.is_some() || ours || is_traced_vk(raw.vk)) {
             let _ = state.events.send(HookEvent::Trace(Trace {
                 vk: raw.vk,
@@ -245,7 +264,7 @@ fn handle(info: &KBDLLHOOKSTRUCT, down: bool) -> bool {
                 time_ms: info.time,
                 key,
                 numlock_on,
-                numlock_hint: if injected { None } else { numlock_hint(raw) },
+                numlock_hint: hint,
                 decision,
                 elapsed: started.elapsed(),
             }));
@@ -257,10 +276,11 @@ fn handle(info: &KBDLLHOOKSTRUCT, down: bool) -> bool {
 
 /// 넘패드 키는 아니지만 판정에 영향을 주므로 기록하는 키 (Shift, NumLock).
 fn is_traced_vk(vk: u16) -> bool {
-    matches!(
-        vk,
-        key::vk::SHIFT | key::vk::LSHIFT | key::vk::RSHIFT | key::vk::NUMLOCK
-    )
+    is_shift_vk(vk) || vk == key::vk::NUMLOCK
+}
+
+fn is_shift_vk(vk: u16) -> bool {
+    matches!(vk, key::vk::SHIFT | key::vk::LSHIFT | key::vk::RSHIFT)
 }
 
 fn numlock_is_on() -> bool {

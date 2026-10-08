@@ -1,0 +1,2 @@
+# 저장소와 작업 트리 모두 LF로 고정한다 (core.autocrlf 설정과 무관하게).
+* text=auto eol=lf

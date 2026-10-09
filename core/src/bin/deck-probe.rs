@@ -8,7 +8,8 @@
 //! - 콜백 처리 시간이 충분히 짧은가
 //!
 //! 사용법: deck-probe [--quiet] [--loop-test] [--reinstall-secs N]
-//!   --quiet           판정 기록 없이 버튼 실행만 출력
+//!   --quiet           판정 기록 없이 버튼 실행과 NumLock 불일치만 출력.
+//!                     통계(불일치 횟수, 최대 콜백)는 그대로 집계한다.
 //!   --loop-test       버튼이 실행될 때마다 넘패드 5(VK_CLEAR)를 주입해
 //!                     자기 입력을 다시 가로채지 않는지 확인
 //!   --reinstall-secs  훅 재설치 주기 (기본 60초)
@@ -84,7 +85,8 @@ fn main() -> ExitCode {
 
     let (tx, rx) = mpsc::channel();
     let config = HookConfig {
-        trace: !args.quiet,
+        // 통계를 내려면 --quiet여도 기록은 받아야 한다. 출력만 줄인다.
+        trace: true,
         reinstall_every: args.reinstall_every,
     };
     let _hook = match hook::start(config, tx) {
@@ -126,7 +128,9 @@ fn main() -> ExitCode {
                 if mismatch {
                     stats.numlock_mismatches += 1;
                 }
-                println!("{}", format_trace(&t, mismatch));
+                if !args.quiet || mismatch {
+                    println!("{}", format_trace(&t, mismatch));
+                }
             }
             HookEvent::Reinstalled { count } => {
                 println!(

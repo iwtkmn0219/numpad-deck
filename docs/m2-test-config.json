@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "pages": [
+    {
+      "name": "액션 시험 1",
+      "buttons": {
+        "7": { "label": "메모장 열기/전환", "action": { "type": "launch", "target": "notepad.exe" } },
+        "8": {
+          "label": "글자 입력",
+          "action": { "type": "text", "text": "안녕하세요 Numpad Deck! 123 ABC\n두 번째 줄\t탭 뒤" }
+        },
+        "9": { "label": "Ctrl+A", "action": { "type": "hotkey", "keys": ["Ctrl", "A"] } },
+        "+": { "label": "띵", "action": { "type": "sound", "file": "%WINDIR%\\Media\\Windows Notify System Generic.wav" } },
+        "4": { "label": "볼륨 -", "action": { "type": "media", "command": "volumeDown" } },
+        "5": { "label": "재생/정지", "action": { "type": "media", "command": "playPause" } },
+        "6": { "label": "볼륨 +", "action": { "type": "media", "command": "volumeUp" } },
+        "1": { "label": "다운로드 폴더", "action": { "type": "open", "target": "%USERPROFILE%\\Downloads" } },
+        "2": { "label": "웹사이트", "action": { "type": "open", "target": "https://www.example.com" } },
+        "3": { "label": "마이크 음소거", "action": { "type": "micMute" } },
+        "Enter": {
+          "label": "메모장에 날짜 묶음",
+          "action": {
+            "type": "sequence",
+            "steps": [
+              { "type": "launch", "target": "notepad.exe" },
+              { "type": "delay", "ms": 800 },
+              { "type": "text", "text": "\n— 묶음 시작 —\n" },
+              { "type": "delay", "ms": 1500 },
+              { "type": "text", "text": "1.5초 뒤 입력됨\n" }
+            ]
+          }
+        },
+        "0": { "label": "탐색기 열기/전환", "action": { "type": "launch", "target": "explorer.exe" } }
+      }
+    },
+    {
+      "name": "액션 시험 2",
+      "buttons": {
+        "7": { "label": "Win+D", "action": { "type": "hotkey", "keys": ["Win", "D"] } },
+        "8": { "label": "Alt+Tab", "action": { "type": "hotkey", "keys": ["Alt", "Tab"] } },
+        "9": { "label": "시작 메뉴", "action": { "type": "hotkey", "keys": ["Win"] } },
+        "4": { "label": "효과음 연타", "action": { "type": "sound", "file": "C:\\Windows\\Media\\tada.wav", "volume": 0.5 } }
+      }
+    }
+  ]
+}

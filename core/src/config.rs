@@ -57,7 +57,7 @@ pub struct Button {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 pub enum Action {
-    /// 키 이름 배열. 예: `["Ctrl", "Shift", "S"]`. 키 이름 검증은 액션 실행기가 한다.
+    /// 키 이름 배열. 예: `["Ctrl", "Shift", "S"]`. 이름은 [`crate::keys`] 참고.
     Hotkey {
         keys: Vec<String>,
     },
@@ -205,6 +205,7 @@ impl Config {
 fn validate_action(action: &Action, in_sequence: bool) -> Result<(), String> {
     match action {
         Action::Hotkey { keys } if keys.is_empty() => Err("단축키가 비어 있습니다.".into()),
+        Action::Hotkey { keys } => crate::keys::parse_all(keys).map(|_| ()),
         Action::Launch { target, .. } | Action::Open { target } if target.trim().is_empty() => {
             Err("대상이 비어 있습니다.".into())
         }
@@ -428,6 +429,12 @@ mod tests {
     }
 
     #[test]
+    fn m2_test_config_is_valid() {
+        let config = parse(include_str!("../../docs/m2-test-config.json")).unwrap();
+        assert_eq!(config.pages.len(), 2);
+    }
+
+    #[test]
     fn buttons_are_written_in_layout_order() {
         let config = Config::default_config();
         let text = serde_json::to_string(&config.pages[0].buttons).unwrap();
@@ -517,6 +524,7 @@ mod tests {
             r#"{"type":"sequence","steps":[{"type":"sequence","steps":[{"type":"micMute"}]}]}"#,
             r#"{"type":"sequence","steps":[{"type":"delay","ms":600000}]}"#,
             r#"{"type":"hotkey","keys":[]}"#,
+            r#"{"type":"hotkey","keys":["Ctrl","Foo"]}"#,
             r#"{"type":"open","target":"  "}"#,
             r#"{"type":"sound","file":"a.mp3","volume":1.5}"#,
         ] {

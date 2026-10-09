@@ -5,6 +5,8 @@
 //! - [`layout`]: v1.0 고정 키 배치 (버튼 12개 + 시스템 키 4개).
 //! - [`config`]: 설정 파일(JSON) 스키마, 읽기·쓰기, 변경 감시.
 //! - [`deck`]: 현재 페이지와 디스패처 (순수 로직).
+//! - [`keys`]: 단축키의 키 이름 ↔ 가상 키 (순수 로직).
+//! - [`action`]: 액션 실행기 (Windows 전용).
 //! - [`hook`]: 저수준 키보드 훅 전용 스레드 (Windows 전용).
 //! - [`inject`]: 서명을 붙인 입력 주입과 자기 입력 판별 (Windows 전용).
 
@@ -12,8 +14,11 @@ pub mod config;
 pub mod deck;
 pub mod gate;
 pub mod key;
+pub mod keys;
 pub mod layout;
 
+#[cfg(windows)]
+pub mod action;
 #[cfg(windows)]
 pub mod hook;
 #[cfg(windows)]

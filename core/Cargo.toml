@@ -16,7 +16,14 @@ path = "src/bin/deck-probe.rs"
 version = "0.62.2"
 features = [
     "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_Media_Audio",
+    "Win32_Media_Audio_Endpoints",
+    "Win32_System_Com",
+    "Win32_System_Environment",
     "Win32_System_LibraryLoader",
+    "Win32_System_Registry",
+    "Win32_UI_Shell",
     "Win32_System_Threading",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
@@ -24,6 +31,7 @@ features = [
 
 [dependencies]
 notify-debouncer-mini = "0.7.0"
+rodio = { version = "0.22.2", default-features = false, features = ["playback", "mp3", "vorbis", "wav", "flac"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 

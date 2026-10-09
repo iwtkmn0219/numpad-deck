@@ -7,7 +7,7 @@
 //! - Shift + 넘패드에서 가짜 Shift 이벤트가 어떻게 보이는가
 //! - 콜백 처리 시간이 충분히 짧은가
 //!
-//! 사용법: deck-probe [--quiet] [--loop-test] [--reinstall-secs N] [--config]
+//! 사용법: deck-probe [--quiet] [--loop-test] [--reinstall-secs N] [--config [--config-file PATH] [--run]]
 //!   --quiet           판정 기록 없이 버튼 실행과 NumLock 불일치만 출력.
 //!                     통계(불일치 횟수, 최대 콜백)는 그대로 집계한다.
 //!   --loop-test       버튼이 실행될 때마다 넘패드 5(VK_CLEAR)를 주입해
@@ -15,7 +15,9 @@
 //!   --reinstall-secs  훅 재설치 주기 (기본 60초)
 //!   --config          기본 설정 파일(config::default_path)을 읽고 감시한다.
 //!                     없으면 기본 설정으로 만든다. 넘패드를 누를 때마다
-//!                     페이지 전환과 실행할 버튼을 출력한다 (액션 실행은 아직 없음).
+//!                     페이지 전환과 실행할 버튼을 출력한다.
+//!   --config-file     --config와 함께: 기본 위치 대신 이 설정 파일을 쓴다.
+//!   --run             --config와 함께: 버튼의 액션을 실제로 실행한다.
 //!
 //! 끝내려면 Ctrl+C.
 
@@ -23,6 +25,7 @@ use std::process::ExitCode;
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use deck_core::action::{ExecEvent, Executor};
 use deck_core::config::{self, Config};
 use deck_core::deck::{Deck, Dispatch};
 use deck_core::gate::Decision;
@@ -36,6 +39,8 @@ struct Args {
     loop_test: bool,
     reinstall_every: Duration,
     config: bool,
+    run: bool,
+    config_file: Option<std::path::PathBuf>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -43,6 +48,8 @@ fn parse_args() -> Result<Args, String> {
         quiet: false,
         loop_test: false,
         config: false,
+        run: false,
+        config_file: None,
         reinstall_every: HookConfig::default().reinstall_every,
     };
     let mut it = std::env::args().skip(1);
@@ -51,6 +58,13 @@ fn parse_args() -> Result<Args, String> {
             "--quiet" => args.quiet = true,
             "--loop-test" => args.loop_test = true,
             "--config" => args.config = true,
+            "--run" => args.run = true,
+            "--config-file" => {
+                let path = it
+                    .next()
+                    .ok_or("--config-file 뒤에 파일 경로가 필요합니다")?;
+                args.config_file = Some(path.into());
+            }
             "--reinstall-secs" => {
                 let secs: u64 = it
                     .next()
@@ -91,8 +105,24 @@ fn main() -> ExitCode {
     }
     println!();
 
+    if (args.run || args.config_file.is_some()) && !args.config {
+        eprintln!("--run과 --config-file은 --config와 함께 써야 합니다");
+        return ExitCode::from(2);
+    }
+    let executor = if args.run {
+        match start_executor() {
+            Ok(executor) => Some(executor),
+            Err(e) => {
+                eprintln!("액션 실행기를 시작할 수 없습니다: {e}");
+                return ExitCode::FAILURE;
+            }
+        }
+    } else {
+        None
+    };
+
     let deck_config = if args.config {
-        match start_config() {
+        match start_config(args.config_file.clone()) {
             Ok(pair) => Some(pair),
             Err(e) => {
                 eprintln!("{e}");
@@ -130,6 +160,16 @@ fn main() -> ExitCode {
                     let DeckState { config, deck } = &mut *state;
                     let dispatch = deck.on_press(key, config);
                     println!("  {}", describe_dispatch(&dispatch, config));
+                    if let (
+                        Some(executor),
+                        Dispatch::Button {
+                            button: Some(button),
+                            ..
+                        },
+                    ) = (&executor, dispatch)
+                    {
+                        executor.submit(button.label, button.action);
+                    }
                 }
 
                 let now = Instant::now();
@@ -172,14 +212,38 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// 실행기를 띄우고 결과를 출력하는 스레드를 붙인다.
+fn start_executor() -> std::io::Result<Executor> {
+    let (tx, rx) = mpsc::channel();
+    let executor = Executor::start(tx)?;
+    std::thread::spawn(move || {
+        for event in rx {
+            match event {
+                ExecEvent::Done { label } => println!("  ✔ \"{label}\" 완료"),
+                ExecEvent::Failed { label, error } => println!("  ✖ \"{label}\" 실패: {error}"),
+                ExecEvent::MicMuted(muted) => {
+                    println!("  🎙 마이크 {}", if muted { "음소거" } else { "켜짐" })
+                }
+            }
+        }
+    });
+    Ok(executor)
+}
+
 struct DeckState {
     config: Config,
     deck: Deck,
 }
 
 /// 설정을 읽고 감시를 시작한다. 바뀔 때마다 현재 설정을 갈아 끼우고 결과를 출력한다.
-fn start_config() -> Result<(Arc<Mutex<DeckState>>, config::ConfigWatcher), String> {
-    let path = config::default_path().ok_or("APPDATA 환경 변수가 없습니다")?;
+fn start_config(
+    file: Option<std::path::PathBuf>,
+) -> Result<(Arc<Mutex<DeckState>>, config::ConfigWatcher), String> {
+    let path = match file {
+        // 상대 경로면 폴더 감시가 실패하므로 절대 경로로 바꾼다.
+        Some(path) => std::path::absolute(&path).map_err(|e| e.to_string())?,
+        None => config::default_path().ok_or("APPDATA 환경 변수가 없습니다")?,
+    };
     let initial = config::load_or_create(&path).map_err(|e| e.to_string())?;
     println!("설정 파일: {}", path.display());
     print_config_summary(&initial);

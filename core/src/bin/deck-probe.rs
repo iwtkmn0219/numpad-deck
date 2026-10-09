@@ -14,8 +14,8 @@
 //!                     자기 입력을 다시 가로채지 않는지 확인
 //!   --reinstall-secs  훅 재설치 주기 (기본 60초)
 //!   --config          기본 설정 파일(config::default_path)을 읽고 감시한다.
-//!                     없으면 기본 설정으로 만든다. 버튼 실행 때 첫 페이지의
-//!                     버튼 이름을 함께 출력한다 (페이지 전환·액션은 아직 없음).
+//!                     없으면 기본 설정으로 만든다. 넘패드를 누를 때마다
+//!                     페이지 전환과 실행할 버튼을 출력한다 (액션 실행은 아직 없음).
 //!
 //! 끝내려면 Ctrl+C.
 
@@ -24,6 +24,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use deck_core::config::{self, Config};
+use deck_core::deck::{Deck, Dispatch};
 use deck_core::gate::Decision;
 use deck_core::hook::{self, HookConfig, HookEvent, Trace};
 use deck_core::inject;
@@ -123,17 +124,12 @@ fn main() -> ExitCode {
         match event {
             HookEvent::Fire(key) => {
                 stats.fires += 1;
-                let button = deck_config.as_ref().and_then(|(current, _)| {
-                    let config = current.lock().unwrap();
-                    config.button(0, key).map(|b| b.label.clone())
-                });
-                match button {
-                    Some(label) => println!(
-                        "▶ 버튼 실행: {:<5} → {} \"{label}\"",
-                        key.label(),
-                        describe_role(key)
-                    ),
-                    None => println!("▶ 버튼 실행: {:<5} → {}", key.label(), describe_role(key)),
+                println!("▶ 버튼 실행: {:<5} → {}", key.label(), describe_role(key));
+                if let Some((state, _)) = &deck_config {
+                    let mut state = state.lock().unwrap();
+                    let DeckState { config, deck } = &mut *state;
+                    let dispatch = deck.on_press(key, config);
+                    println!("  {}", describe_dispatch(&dispatch, config));
                 }
 
                 let now = Instant::now();
@@ -176,29 +172,55 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
+struct DeckState {
+    config: Config,
+    deck: Deck,
+}
+
 /// 설정을 읽고 감시를 시작한다. 바뀔 때마다 현재 설정을 갈아 끼우고 결과를 출력한다.
-fn start_config() -> Result<(Arc<Mutex<Config>>, config::ConfigWatcher), String> {
+fn start_config() -> Result<(Arc<Mutex<DeckState>>, config::ConfigWatcher), String> {
     let path = config::default_path().ok_or("APPDATA 환경 변수가 없습니다")?;
     let initial = config::load_or_create(&path).map_err(|e| e.to_string())?;
     println!("설정 파일: {}", path.display());
     print_config_summary(&initial);
     println!();
 
-    let current = Arc::new(Mutex::new(initial.clone()));
-    let shared = Arc::clone(&current);
+    let state = Arc::new(Mutex::new(DeckState {
+        config: initial.clone(),
+        deck: Deck::new(),
+    }));
+    let shared = Arc::clone(&state);
     let watcher = config::watch(&path, initial, move |result| match result {
         Ok(config) => {
             println!("✔ 설정 다시 읽음");
             print_config_summary(&config);
-            *shared.lock().unwrap() = config;
+            let mut state = shared.lock().unwrap();
+            if let Some(dispatch) = state.deck.on_config_changed(&config) {
+                println!("  {}", describe_dispatch(&dispatch, &config));
+            }
+            state.config = config;
         }
-        Err(e) => println!(
-            "✖ {e}
-  직전 설정을 계속 씁니다."
-        ),
+        Err(e) => println!("✖ {e}\n  직전 설정을 계속 씁니다."),
     })
     .map_err(|e| e.to_string())?;
-    Ok((current, watcher))
+    Ok((state, watcher))
+}
+
+fn describe_dispatch(dispatch: &Dispatch, config: &Config) -> String {
+    let page_name = |page: usize| {
+        let name = config.pages.get(page).map_or("", |p| p.name.as_str());
+        format!("페이지 {}/{} \"{name}\"", page + 1, config.pages.len())
+    };
+    match dispatch {
+        Dispatch::Button {
+            page,
+            button: Some(button),
+            ..
+        } => format!("{} · \"{}\" 실행", page_name(*page), button.label),
+        Dispatch::Button { page, .. } => format!("{} · 빈 자리", page_name(*page)),
+        Dispatch::Page { page } => format!("→ {}", page_name(*page)),
+        Dispatch::ToggleOsd => "OSD 띄우기/숨기기".into(),
+    }
 }
 
 fn print_config_summary(config: &Config) {

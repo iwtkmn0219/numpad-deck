@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 현재 상태
 
-**1단계(코어 콘솔 검증) 완료, M1 통과(2026-10-09). 다음은 2단계(액션·설정·OSD).** Cargo 워크스페이스에 `core/` 크레이트(`numpad-deck-core`, lib 이름 `deck_core`)만 있다. Tauri·React UI는 아직 없다. 기획 근거는 `Numpad Deck 프로젝트 제안서.md`, M1 수동 검증 항목은 `docs/m1-checklist.md`.
+**1단계(코어 콘솔 검증) 완료, M1 통과(2026-10-09). 다음은 2단계(액션·설정·OSD).** Cargo 워크스페이스에 `core/` 크레이트(`numpad-deck-core`, lib 이름 `deck_core`)만 있다. Tauri·React UI는 아직 없다. 기획 근거는 `Numpad Deck 프로젝트 제안서.md`, M1 수동 검증 항목과 결과는 `docs/m1-checklist.md`, 2단계 계획(설정 스키마·액션 명세·OSD 동작 결정)은 `docs/stage2-plan.md`.
 
 개념 검증용 AutoHotkey v2 프로토타입이 `~/Downloads/numpad-deck.ahk`에 있다(저장소 밖). 키 배치·페이지 전환·클릭 통과 OSD의 참고 구현이다.
 

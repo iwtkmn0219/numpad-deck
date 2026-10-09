@@ -1,18 +1,26 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 // @ts-expect-error type error without @types/node package
 import process from "node:process";
 const host = process.env.TAURI_DEV_HOST;
 
-// https://vite.dev/config/
+// 창마다 HTML 진입점을 따로 둔다: index.html(설정 편집기, 3단계), osd.html(OSD).
 export default defineConfig(() => ({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
+  build: {
+    rollupOptions: {
+      input: {
+        main: "index.html",
+        osd: "osd.html",
+      },
+    },
+  },
 
-  // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
-  //
-  // 1. prevent Vite from obscuring rust errors
+  // Tauri 개발용 설정 (tauri dev / tauri build에서만 쓴다)
+  // 1. Rust 오류가 가려지지 않게
   clearScreen: false,
-  // 2. tauri expects a fixed port, fail if that port is not available
+  // 2. Tauri는 고정 포트를 기대한다
   server: {
     port: 1420,
     strictPort: true,
@@ -25,7 +33,7 @@ export default defineConfig(() => ({
         }
       : undefined,
     watch: {
-      // 3. tell Vite to ignore watching `src-tauri`
+      // 3. src-tauri는 감시하지 않는다
       ignored: ["**/src-tauri/**"],
     },
   },

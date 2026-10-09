@@ -52,14 +52,15 @@ pub fn execute(target: &str, args: Option<&str>) -> Result<(), String> {
         Ok(()) => Ok(()),
         Err(e) => {
             let reason = match e.code().0 as u32 & 0xFFFF {
-                2 => "파일을 찾을 수 없습니다",
-                3 => "경로를 찾을 수 없습니다",
-                5 => "접근이 거부되었습니다",
-                1155 => "이 파일을 열 프로그램이 없습니다",
-                1223 => "사용자가 취소했습니다",
-                _ => "열 수 없습니다",
+                2 => "파일을 찾을 수 없습니다".to_string(),
+                3 => "경로를 찾을 수 없습니다".to_string(),
+                5 => "접근이 거부되었습니다".to_string(),
+                1155 => "이 파일을 열 프로그램이 없습니다".to_string(),
+                1223 => "사용자가 취소했습니다".to_string(),
+                // 모르는 오류만 Windows 원문을 붙인다.
+                _ => format!("열 수 없습니다 ({e})"),
             };
-            Err(format!("\"{target}\": {reason} ({e})"))
+            Err(format!("\"{target}\": {reason}"))
         }
     }
 }

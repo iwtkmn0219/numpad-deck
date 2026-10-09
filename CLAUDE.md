@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 현재 상태
 
-**2단계 진행 중: 2-1 설정, 2-2 덱 상태, 2-3 액션 실행기 완료(수동 검증 통과), 2-4 트레이 앱 완료(수동 검증 통과). 다음은 2-5 OSD.** 1단계는 M1 통과(2026-10-09). Cargo 워크스페이스에 `core/` 크레이트(`numpad-deck-core`, lib 이름 `deck_core`)와 `app/src-tauri`(Tauri 2 앱 `numpad-deck`)가 있다. 앱은 아직 창 없이 트레이만 있다(React 프런트엔드는 템플릿 그대로, 2-5 OSD부터 사용). 기획 근거는 `Numpad Deck 프로젝트 제안서.md`, M1 수동 검증 항목과 결과는 `docs/m1-checklist.md`, 2단계 계획(설정 스키마·액션 명세·OSD 동작 결정)은 `docs/stage2-plan.md`, 액션 수동 검증은 `docs/m2-checklist.md`(시험용 설정 `docs/m2-test-config.json`).
+**2단계 진행 중: 2-1 설정, 2-2 덱 상태, 2-3 액션 실행기 완료(수동 검증 통과), 2-4 트레이 앱 완료(수동 검증 통과), 2-5 OSD 구현(수동 검증 대기).** 1단계는 M1 통과(2026-10-09). Cargo 워크스페이스에 `core/` 크레이트(`numpad-deck-core`, lib 이름 `deck_core`)와 `app/src-tauri`(Tauri 2 앱 `numpad-deck`)가 있다. 앱은 트레이와 OSD 창 하나로 이뤄진다. 프런트엔드는 Vite 다중 진입점: `osd.html`(OSD), `index.html`(설정 편집기 자리, 3단계). 기획 근거는 `Numpad Deck 프로젝트 제안서.md`, M1 수동 검증 항목과 결과는 `docs/m1-checklist.md`, 2단계 계획(설정 스키마·액션 명세·OSD 동작 결정)은 `docs/stage2-plan.md`, 액션 수동 검증은 `docs/m2-checklist.md`(시험용 설정 `docs/m2-test-config.json`).
 
 개념 검증용 AutoHotkey v2 프로토타입이 `~/Downloads/numpad-deck.ahk`에 있다(저장소 밖). 키 배치·페이지 전환·클릭 통과 OSD의 참고 구현이다.
 
@@ -26,6 +26,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `lib.rs`: Tauri 진입점. 단일 인스턴스(훅이 둘이면 버튼이 두 번 실행됨), 창 없이 상주(`ExitRequested` 막음), 트레이 메뉴 이벤트.
 - `runtime.rs`: 코어 연결. 훅 이벤트를 받는 디스패처 스레드 → `Deck` → `Executor`. 설정 감시, 일시정지(`HookHandle::set_paused`), 상태를 트레이에 반영.
 - `tray.rs`: 트레이 아이콘(32×32 RGBA를 코드로 그림: 숫자 모드=테두리, 덱 모드=파란 칸, 일시정지=회색·가운데 줄 빔)과 메뉴.
+- `osd.rs`: OSD 창. 시작할 때 숨긴 채 만들고 `WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW` + `set_ignore_cursor_events`(클릭 통과). 마우스가 있는 모니터 작업 영역 우측 하단에 `SWP_NOACTIVATE`로 띄운다. 창 조작은 모두 비동기(`SWP_ASYNCWINDOWPOS`, `ShowWindowAsync`). 내용은 `osd://update` 이벤트로 보낸다. 숨김 예약은 세대 번호로 무효화, `-` 키는 고정 토글.
+- **교착 주의**: `runtime.rs`는 상태 잠금 안에서 계산만 하고 트레이·OSD 갱신은 잠금을 푼 뒤 한다(`Effects` → `apply`). 트레이 갱신은 메인 스레드를 기다리는데 메뉴 처리(메인 스레드)도 같은 잠금을 잡기 때문이다.
+
+`app/src/`: `osd/`(OSD React 화면, `types.ts`의 `OsdPayload`는 `osd.rs`의 `Payload`와 모양이 같아야 함), `editor/`(3단계), `index.css`(Tailwind v4).
 
 ## 작업 방식
 
@@ -45,7 +49,9 @@ cargo run --bin deck-probe -- --quiet --loop-test --reinstall-secs 10
 cargo run --bin deck-probe -- --config  # 설정 파일을 읽고 감시, 저장하면 즉시 반영
 cargo run --bin deck-probe -- --quiet --config --config-file docs/m2-test-config.json --run  # 액션 실제 실행
 cargo run --bin deck-probe -- --mics [--mute-test]  # 녹음 장치 목록·기본 장치·음소거 상태 진단
-cargo run -p numpad-deck                # 트레이 앱 실행 (창 없음, 프런트엔드 빌드 불필요)
+cargo run -p numpad-deck                # 트레이 앱 실행 (OSD 화면은 Vite 개발 서버가 있어야 보임)
+cd app && npm install && npm run tauri dev   # 앱 + OSD 개발 실행
+cd app && npm run build                 # 프런트엔드 타입 검사·빌드
 cargo test -p numpad-deck-core gate::   # 테스트 하나만
 ```
 

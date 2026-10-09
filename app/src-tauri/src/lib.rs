@@ -1,8 +1,9 @@
 //! Numpad Deck 앱: 코어를 트레이 상주 앱으로 묶는다.
 //!
-//! 창은 아직 없다 (OSD는 2-5, 편집기는 3단계). 트레이 메뉴로 일시정지·설정 파일
-//! 열기·종료를 한다.
+//! 창은 OSD 하나뿐이다 (편집기는 3단계). 트레이 메뉴로 일시정지·설정 파일 열기·종료를
+//! 한다.
 
+mod osd;
 mod runtime;
 mod tray;
 
@@ -10,6 +11,7 @@ use std::sync::Arc;
 
 use tauri::Manager;
 
+use osd::Osd;
 use runtime::Runtime;
 use tray::{Tray, MENU_OPEN_CONFIG, MENU_PAUSE, MENU_QUIT};
 
@@ -21,7 +23,12 @@ pub fn run() {
         .setup(|app| {
             let runtime = Arc::new(Runtime::start()?);
             let tray = Tray::create(app.handle(), &runtime.view())?;
-            runtime.attach_tray(tray);
+            // OSD를 못 만들어도 덱은 동작해야 한다.
+            let osd = Osd::create(app.handle())
+                .map_err(|e| eprintln!("OSD 창을 만들 수 없습니다: {e}"))
+                .ok()
+                .map(Arc::new);
+            runtime.attach_ui(tray, osd);
             app.manage(runtime);
             Ok(())
         })

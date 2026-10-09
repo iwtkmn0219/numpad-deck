@@ -33,6 +33,7 @@ pub const MENU_PAUSE: &str = "pause";
 pub const MENU_OPEN_CONFIG: &str = "open-config";
 pub const MENU_QUIT: &str = "quit";
 
+#[derive(Clone)]
 pub struct Tray {
     icon: TrayIcon,
     status: MenuItem<Wry>,

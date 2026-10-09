@@ -7,19 +7,23 @@
 //! - Shift + 넘패드에서 가짜 Shift 이벤트가 어떻게 보이는가
 //! - 콜백 처리 시간이 충분히 짧은가
 //!
-//! 사용법: deck-probe [--quiet] [--loop-test] [--reinstall-secs N]
+//! 사용법: deck-probe [--quiet] [--loop-test] [--reinstall-secs N] [--config]
 //!   --quiet           판정 기록 없이 버튼 실행과 NumLock 불일치만 출력.
 //!                     통계(불일치 횟수, 최대 콜백)는 그대로 집계한다.
 //!   --loop-test       버튼이 실행될 때마다 넘패드 5(VK_CLEAR)를 주입해
 //!                     자기 입력을 다시 가로채지 않는지 확인
 //!   --reinstall-secs  훅 재설치 주기 (기본 60초)
+//!   --config          기본 설정 파일(config::default_path)을 읽고 감시한다.
+//!                     없으면 기본 설정으로 만든다. 버튼 실행 때 첫 페이지의
+//!                     버튼 이름을 함께 출력한다 (페이지 전환·액션은 아직 없음).
 //!
 //! 끝내려면 Ctrl+C.
 
 use std::process::ExitCode;
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use deck_core::config::{self, Config};
 use deck_core::gate::Decision;
 use deck_core::hook::{self, HookConfig, HookEvent, Trace};
 use deck_core::inject;
@@ -30,12 +34,14 @@ struct Args {
     quiet: bool,
     loop_test: bool,
     reinstall_every: Duration,
+    config: bool,
 }
 
 fn parse_args() -> Result<Args, String> {
     let mut args = Args {
         quiet: false,
         loop_test: false,
+        config: false,
         reinstall_every: HookConfig::default().reinstall_every,
     };
     let mut it = std::env::args().skip(1);
@@ -43,6 +49,7 @@ fn parse_args() -> Result<Args, String> {
         match arg.as_str() {
             "--quiet" => args.quiet = true,
             "--loop-test" => args.loop_test = true,
+            "--config" => args.config = true,
             "--reinstall-secs" => {
                 let secs: u64 = it
                     .next()
@@ -83,6 +90,18 @@ fn main() -> ExitCode {
     }
     println!();
 
+    let deck_config = if args.config {
+        match start_config() {
+            Ok(pair) => Some(pair),
+            Err(e) => {
+                eprintln!("{e}");
+                return ExitCode::FAILURE;
+            }
+        }
+    } else {
+        None
+    };
+
     let (tx, rx) = mpsc::channel();
     let config = HookConfig {
         // 통계를 내려면 --quiet여도 기록은 받아야 한다. 출력만 줄인다.
@@ -104,7 +123,18 @@ fn main() -> ExitCode {
         match event {
             HookEvent::Fire(key) => {
                 stats.fires += 1;
-                println!("▶ 버튼 실행: {:<5} → {}", key.label(), describe_role(key));
+                let button = deck_config.as_ref().and_then(|(current, _)| {
+                    let config = current.lock().unwrap();
+                    config.button(0, key).map(|b| b.label.clone())
+                });
+                match button {
+                    Some(label) => println!(
+                        "▶ 버튼 실행: {:<5} → {} \"{label}\"",
+                        key.label(),
+                        describe_role(key)
+                    ),
+                    None => println!("▶ 버튼 실행: {:<5} → {}", key.label(), describe_role(key)),
+                }
 
                 let now = Instant::now();
                 recent_fires.retain(|t| now.duration_since(*t) < Duration::from_secs(1));
@@ -144,6 +174,47 @@ fn main() -> ExitCode {
         }
     }
     ExitCode::SUCCESS
+}
+
+/// 설정을 읽고 감시를 시작한다. 바뀔 때마다 현재 설정을 갈아 끼우고 결과를 출력한다.
+fn start_config() -> Result<(Arc<Mutex<Config>>, config::ConfigWatcher), String> {
+    let path = config::default_path().ok_or("APPDATA 환경 변수가 없습니다")?;
+    let initial = config::load_or_create(&path).map_err(|e| e.to_string())?;
+    println!("설정 파일: {}", path.display());
+    print_config_summary(&initial);
+    println!();
+
+    let current = Arc::new(Mutex::new(initial.clone()));
+    let shared = Arc::clone(&current);
+    let watcher = config::watch(&path, initial, move |result| match result {
+        Ok(config) => {
+            println!("✔ 설정 다시 읽음");
+            print_config_summary(&config);
+            *shared.lock().unwrap() = config;
+        }
+        Err(e) => println!(
+            "✖ {e}
+  직전 설정을 계속 씁니다."
+        ),
+    })
+    .map_err(|e| e.to_string())?;
+    Ok((current, watcher))
+}
+
+fn print_config_summary(config: &Config) {
+    for (i, page) in config.pages.iter().enumerate() {
+        let labels: Vec<String> = page
+            .buttons
+            .iter()
+            .map(|(key, button)| format!("{}={}", key.key().label(), button.label))
+            .collect();
+        println!(
+            "  페이지 {} \"{}\": {}",
+            i + 1,
+            page.name,
+            labels.join(", ")
+        );
+    }
 }
 
 fn describe_role(key: NumpadKey) -> String {

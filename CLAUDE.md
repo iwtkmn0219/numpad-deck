@@ -26,7 +26,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `lib.rs`: Tauri 진입점. 단일 인스턴스(훅이 둘이면 버튼이 두 번 실행됨), 창 없이 상주(`ExitRequested` 막음), 트레이 메뉴 이벤트.
 - `runtime.rs`: 코어 연결. 훅 이벤트를 받는 디스패처 스레드 → `Deck` → `Executor`. 설정 감시, 일시정지(`HookHandle::set_paused`), 상태를 트레이에 반영.
 - `tray.rs`: 트레이 아이콘(32×32 RGBA를 코드로 그림: 숫자 모드=테두리, 덱 모드=파란 칸, 일시정지=회색·가운데 줄 빔)과 메뉴.
-- `osd.rs`: OSD 창. 시작할 때 숨긴 채 만들고 `WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW` + `set_ignore_cursor_events`(클릭 통과). 마우스가 있는 모니터 작업 영역 우측 하단에 `SWP_NOACTIVATE`로 띄운다. 창 조작은 모두 비동기(`SWP_ASYNCWINDOWPOS`, `ShowWindowAsync`). 내용은 `osd://update` 이벤트로 보낸다. 숨김 예약은 세대 번호로 무효화, `-` 키는 고정 토글.
+- `osd.rs`: OSD 창. 시작할 때 숨긴 채 만들고 `WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW` + `set_ignore_cursor_events`(클릭 통과). 마우스가 있는 모니터 작업 영역 우측 하단에 `SWP_NOACTIVATE`로 띄운다. 창 조작은 모두 비동기(`SWP_ASYNCWINDOWPOS`, `ShowWindowAsync`). 내용은 `osd://update` 이벤트로 보낸다. 숨김 예약은 세대 번호로 무효화, `-` 키는 고정 토글. WebView2는 `--disable-gpu --disable-gpu-compositing`으로 띄운다(상주 메모리 약 116MB, GPU를 켜면 약 223MB). 편집기 창도 같은 인자를 써야 한다.
 - **교착 주의**: `runtime.rs`는 상태 잠금 안에서 계산만 하고 트레이·OSD 갱신은 잠금을 푼 뒤 한다(`Effects` → `apply`). 트레이 갱신은 메인 스레드를 기다리는데 메뉴 처리(메인 스레드)도 같은 잠금을 잡기 때문이다.
 
 `app/src/`: `osd/`(OSD React 화면, `types.ts`의 `OsdPayload`는 `osd.rs`의 `Payload`와 모양이 같아야 함), `editor/`(3단계), `index.css`(Tailwind v4).

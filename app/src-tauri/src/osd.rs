@@ -85,6 +85,12 @@ impl Osd {
             .focused(false)
             .focusable(false)
             .visible(false)
+            // GPU 가속을 끈다. 작은 OSD에는 필요 없고, 끄면 WebView2 상주 메모리가 약
+            // 216MB → 109MB로 준다 (실측). 앞부분은 wry 기본 인자로, 덮어쓰므로 다시 넣는다.
+            // 3단계 편집기 창도 같은 인자를 써야 한다 (인자가 다르면 데이터 폴더도 달라야 함).
+            .additional_browser_args(
+                "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-gpu --disable-gpu-compositing",
+            )
             .build()?;
         window.set_ignore_cursor_events(true)?;
         let hwnd = window.hwnd()?.0 as isize;

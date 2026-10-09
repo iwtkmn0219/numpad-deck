@@ -13,6 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `key.rs`: VK + 확장 플래그 → `NumpadKey`. NumLock ON 형태(`VK_NUMPAD7`)와 OFF 형태(`VK_HOME`)를 같은 키로 식별한다(키 다운/업 짝짓기용). Windows 의존 없음.
 - `gate.rs`: 다운/업 판정(`Pass`/`Swallow`/`Fire`), 자동 반복 억제, 키 업 놓침 복구. Windows 의존 없음.
 - `layout.rs`: v1.0 고정 키 배치.
+- `config.rs`: 설정 JSON 스키마(`Config`/`Page`/`Button`/`Action`), 검증, 원자적 저장, 폴더 감시로 즉시 반영. 기본 설정은 `default_config.json`(`include_str!`). 경로는 `%APPDATA%\NumpadDeck\config.json`.
 - `hook.rs`: 훅 전용 스레드, 주기적 재설치, `mpsc` 채널로 `HookEvent` 전달.
 - `inject.rs`: `dwExtraInfo` 서명(`SIGNATURE`)을 붙인 `SendInput`.
 - `bin/deck-probe.rs`: M1 검증용 콘솔 프로그램.
@@ -27,11 +28,12 @@ Rust stable(MSVC) + VS 2022 Build Tools 필요. Git Bash에서는 `~/.cargo/bin`
 
 ```
 cargo build
-cargo test                              # key·gate·layout 단위 테스트
+cargo test                              # key·gate·layout·config 단위 테스트
 cargo clippy --all-targets
 cargo fmt
 cargo run --bin deck-probe              # 훅을 걸고 판정 결과 출력 (Ctrl+C로 종료)
 cargo run --bin deck-probe -- --quiet --loop-test --reinstall-secs 10
+cargo run --bin deck-probe -- --config  # 설정 파일을 읽고 감시, 저장하면 즉시 반영
 cargo test -p numpad-deck-core gate::   # 테스트 하나만
 ```
 

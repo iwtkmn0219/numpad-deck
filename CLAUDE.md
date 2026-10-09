@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 현재 상태
 
-**1단계(코어 콘솔 검증) 진행 중.** Cargo 워크스페이스에 `core/` 크레이트(`numpad-deck-core`, lib 이름 `deck_core`)만 있다. Tauri·React UI는 아직 없다. 기획 근거는 `Numpad Deck 프로젝트 제안서.md`, M1 수동 검증 항목은 `docs/m1-checklist.md`.
+**1단계(코어 콘솔 검증) 완료, M1 통과(2026-10-09). 다음은 2단계(액션·설정·OSD).** Cargo 워크스페이스에 `core/` 크레이트(`numpad-deck-core`, lib 이름 `deck_core`)만 있다. Tauri·React UI는 아직 없다. 기획 근거는 `Numpad Deck 프로젝트 제안서.md`, M1 수동 검증 항목은 `docs/m1-checklist.md`.
 
 개념 검증용 AutoHotkey v2 프로토타입이 `~/Downloads/numpad-deck.ahk`에 있다(저장소 밖). 키 배치·페이지 전환·클릭 통과 OSD의 참고 구현이다.
 
@@ -76,7 +76,7 @@ Rust 코어(훅·입력 판정·액션 실행)와 React UI(설정 편집기·OSD
 | Enter | `VK_RETURN` | 확장 플래그 **있음** (메인 Enter는 없음) |
 | `/` `*` `-` `+` | `VK_DIVIDE` `VK_MULTIPLY` `VK_SUBTRACT` `VK_ADD` | 넘패드 전용 VK. **NumLock 영향을 받지 않으므로 NumLock 상태를 따로 조회해야 한다** |
 
-NumLock 상태는 캐싱하지 말고 **키 입력마다 다시 조회한다.** 원격 데스크톱·가상 머신에서 상태가 불일치하기 때문이다. 훅 스레드는 포그라운드가 아니라 `GetKeyState`가 어긋날 수 있으므로 조회 방법은 1단계에서 실측해 정한다. NumLock ON + Shift + 넘패드 7은 `VK_HOME`으로 들어오므로 VK만으로 판정하지 말 것.
+NumLock 상태는 캐싱하지 말고 **키 입력마다 다시 조회한다.** 원격 데스크톱·가상 머신에서 상태가 불일치하기 때문이다. 훅 스레드에서 `GetKeyState(VK_NUMLOCK)`로 조회해도 정확함을 M1에서 실측했다(Shift 조합 포함). NumLock ON + Shift + 넘패드 7은 `VK_HOME`으로 들어오므로 VK만으로 판정하지 말 것.
 
 - **키 업**: 다운을 막았으면 업도 막고, 통과시켰으면 업도 통과시킨다. "가로챈 키 집합"을 기록해 업을 판정한다(누른 채 NumLock이 바뀌는 경우 대비).
 - **자동 반복**: 반복 다운은 무시한다. 버튼 1회 = 액션 1회.

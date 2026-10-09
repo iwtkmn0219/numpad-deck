@@ -40,7 +40,8 @@ struct Job {
     action: Action,
 }
 
-/// 실행기 핸들. 버리면 큐가 닫히고 스레드가 끝난다.
+/// 실행기 핸들. 복제할 수 있고, 모든 복제본을 버리면 큐가 닫히고 스레드가 끝난다.
+#[derive(Clone)]
 pub struct Executor {
     jobs: Sender<Job>,
 }

@@ -31,7 +31,7 @@ use deck_core::action::{ExecEvent, Executor};
 use deck_core::config::{self, Config};
 use deck_core::deck::{Deck, Dispatch};
 use deck_core::gate::Decision;
-use deck_core::hook::{self, HookConfig, HookEvent, Trace};
+use deck_core::hook::{self, HookConfig, HookEvent, Reinstall, Trace};
 use deck_core::inject;
 use deck_core::key::{vk, NumpadKey};
 use deck_core::layout::{self, Role};
@@ -204,9 +204,24 @@ fn main() -> ExitCode {
                     println!("{}", format_trace(&t, mismatch));
                 }
             }
-            HookEvent::Reinstalled { count } => {
+            HookEvent::NumLock(on) => {
                 println!(
-                    "· 훅 재설치 {count}회 | 기록 {} · 실행 {} · NumLock 불일치 {} · 최대 콜백 {}µs",
+                    "· NumLock {}",
+                    if on {
+                        "ON (숫자 모드)"
+                    } else {
+                        "OFF (덱 모드)"
+                    }
+                );
+            }
+            HookEvent::Reinstalled { count, reason } => {
+                let why = match reason {
+                    Reinstall::Periodic => "",
+                    Reinstall::SessionUnlock => " (잠금 해제)",
+                    Reinstall::Resume => " (절전 복귀)",
+                };
+                println!(
+                    "· 훅 재설치 {count}회{why} | 기록 {} · 실행 {} · NumLock 불일치 {} · 최대 콜백 {}µs",
                     stats.events,
                     stats.fires,
                     stats.numlock_mismatches,

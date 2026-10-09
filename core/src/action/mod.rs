@@ -5,7 +5,7 @@
 //! 기다리지 않게 한다. 액션이 실패해도 실행기는 계속 돌고, 실패는 이벤트로 알린다.
 
 mod audio;
-mod mic;
+pub mod mic;
 mod shell;
 mod window;
 
@@ -139,6 +139,13 @@ fn media_vk(command: MediaCommand) -> u16 {
         MediaCommand::Stop => 0xB2,
         MediaCommand::PlayPause => 0xB3,
     }
+}
+
+/// 이 스레드에 COM을 초기화한 채로 `f`를 실행한다. 실행기 밖에서 [`mic`] 진단 함수를
+/// 부를 때 쓴다.
+pub fn with_com<T>(f: impl FnOnce() -> T) -> T {
+    let _com = ComGuard::init();
+    f()
 }
 
 /// 이 스레드에서 COM을 쓴다. 셸 실행과 Core Audio에 필요하다.

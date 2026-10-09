@@ -7,7 +7,7 @@
 //! - Shift + 넘패드에서 가짜 Shift 이벤트가 어떻게 보이는가
 //! - 콜백 처리 시간이 충분히 짧은가
 //!
-//! 사용법: deck-probe [--quiet] [--loop-test] [--reinstall-secs N] [--config [--config-file PATH] [--run]]
+//! 사용법: deck-probe [--quiet] [--loop-test] [--reinstall-secs N] [--config [--config-file PATH] [--run]] | --mics [--mute-test]
 //!   --quiet           판정 기록 없이 버튼 실행과 NumLock 불일치만 출력.
 //!                     통계(불일치 횟수, 최대 콜백)는 그대로 집계한다.
 //!   --loop-test       버튼이 실행될 때마다 넘패드 5(VK_CLEAR)를 주입해
@@ -18,6 +18,8 @@
 //!                     페이지 전환과 실행할 버튼을 출력한다.
 //!   --config-file     --config와 함께: 기본 위치 대신 이 설정 파일을 쓴다.
 //!   --run             --config와 함께: 버튼의 액션을 실제로 실행한다.
+//!   --mics            녹음 장치 목록과 기본 장치·음소거 상태를 출력하고 끝낸다.
+//!   --mute-test       --mics와 함께: 장치마다 음소거 → 3초 대기 → 원래대로를 차례로 한다.
 //!
 //! 끝내려면 Ctrl+C.
 
@@ -90,6 +92,10 @@ struct Stats {
 const RUNAWAY_FIRES_PER_SEC: usize = 30;
 
 fn main() -> ExitCode {
+    let raw: Vec<String> = std::env::args().skip(1).collect();
+    if raw.iter().any(|a| a == "--mics") {
+        return deck_core::action::with_com(|| mics(raw.iter().any(|a| a == "--mute-test")));
+    }
     let args = match parse_args() {
         Ok(args) => args,
         Err(e) => {
@@ -228,6 +234,67 @@ fn start_executor() -> std::io::Result<Executor> {
         }
     });
     Ok(executor)
+}
+
+/// 녹음 장치 진단. 오디오 인터페이스처럼 기본 장치가 아닌 마이크가 음소거되는지 본다.
+fn mics(mute_test: bool) -> ExitCode {
+    use deck_core::action::mic;
+    let list = match mic::list() {
+        Ok(list) => list,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    println!("연결된 녹음 장치 {}개", list.len());
+    for (i, m) in list.iter().enumerate() {
+        let mut roles = Vec::new();
+        if m.default_console {
+            roles.push("기본 장치");
+        }
+        if m.default_communications {
+            roles.push("기본 통신 장치");
+        }
+        let muted = match m.muted {
+            Some(true) => "음소거됨",
+            Some(false) => "켜짐",
+            None => "상태 모름",
+        };
+        println!(
+            "  {}. {} [{}] {} · 하드웨어 음소거 {}",
+            i + 1,
+            m.name,
+            if roles.is_empty() {
+                "-".into()
+            } else {
+                roles.join(", ")
+            },
+            muted,
+            if m.hardware_mute {
+                "지원"
+            } else {
+                "미지원"
+            }
+        );
+    }
+    if mute_test {
+        println!();
+        println!(
+            "장치마다 3초씩 음소거합니다. 그동안 그 마이크에 소리를 내며 앱의 입력 레벨을 보세요."
+        );
+        for (i, m) in list.iter().enumerate() {
+            let Some(was) = m.muted else { continue };
+            println!("  {}. {} 음소거 중…", i + 1, m.name);
+            if let Err(e) = mic::set_mute(&m.id, true) {
+                println!("     실패: {e}");
+                continue;
+            }
+            std::thread::sleep(Duration::from_secs(3));
+            let _ = mic::set_mute(&m.id, was);
+            println!("     원래대로 ({})", if was { "음소거됨" } else { "켜짐" });
+        }
+    }
+    ExitCode::SUCCESS
 }
 
 struct DeckState {

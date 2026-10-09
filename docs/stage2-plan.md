@@ -69,7 +69,7 @@
 | `open` | `target`: URL 또는 폴더 | `ShellExecuteW` |
 | `text` | `text` | `KEYEVENTF_UNICODE` (한글 입력기 상태와 무관) |
 | `media` | `command`: `playPause` `next` `prev` `stop` `volumeUp` `volumeDown` `volumeMute` | 미디어 가상 키 주입. Windows 볼륨 표시가 그대로 뜬다. |
-| `micMute` | — | Core Audio로 기본 녹음 장치의 음소거 토글 |
+| `micMute` | — | Core Audio로 연결된 모든 녹음 장치의 음소거 토글. 하나라도 켜져 있으면 전부 음소거, 전부 음소거면 전부 켬 (기본 장치만 바꾸면 오디오 인터페이스가 빠짐: M2 실측) |
 | `sound` | `file`, `volume`(선택, 0–1) | `rodio`로 재생. WAV·MP3·OGG·FLAC 지원, 연타하면 겹쳐 재생 |
 | `sequence` | `steps`: 액션 배열 | 순서대로 실행. 사이에 `{ "type": "delay", "ms": N }`을 넣을 수 있다. |
 

@@ -18,7 +18,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `keys.rs`: 단축키 키 이름(`"Ctrl"`, `"Win"`, `"F5"` …) ↔ VK·확장 플래그. 설정 검증과 (3단계) 단축키 녹화가 쓴다. Windows 의존 없음.
 - `hook.rs`: 훅 전용 스레드, 주기적 재설치, `mpsc` 채널로 `HookEvent` 전달.
 - `inject.rs`: `dwExtraInfo` 서명(`SIGNATURE`)을 붙인 `SendInput`. 단축키·유니코드 텍스트 주입 전에 사용자가 누르고 있는 보조 키를 뗀다(다시 누르지는 않는다: 끼임 방지). Alt·Win을 뗄 때는 마스크 키 `0xE8`을 끼운다.
-- `action/`: 액션 실행기(`Executor`). 전용 스레드 + 큐, 묶음은 별도 스레드, 실패는 `ExecEvent`로 알림. `shell.rs`(ShellExecuteEx, 오류 창 없음, `%환경변수%` 펼치기), `window.rs`(실행 파일로 창 찾기·포커스·같은 앱 다음 창), `mic.rs`(Core Audio 음소거), `audio.rs`(rodio, 재생할 때만 장치 열고 3초 유휴 뒤 닫음 — 절전 방해 방지).
+- `action/`: 액션 실행기(`Executor`). 전용 스레드 + 큐, 묶음은 별도 스레드, 실패는 `ExecEvent`로 알림. `shell.rs`(ShellExecuteEx, 오류 창 없음, `%환경변수%` 펼치기), `window.rs`(실행 파일로 창 찾기·포커스·같은 앱 다음 창), `mic.rs`(Core Audio로 연결된 **모든** 녹음 장치 음소거 토글 — 기본 장치만 바꾸면 오디오 인터페이스가 빠진다. ASIO 앱에는 적용 안 됨), `audio.rs`(rodio, 재생할 때만 장치 열고 3초 유휴 뒤 닫음 — 절전 방해 방지).
 - `bin/deck-probe.rs`: M1·M2 검증용 콘솔 프로그램.
 
 ## 작업 방식
@@ -38,6 +38,7 @@ cargo run --bin deck-probe              # 훅을 걸고 판정 결과 출력 (Ct
 cargo run --bin deck-probe -- --quiet --loop-test --reinstall-secs 10
 cargo run --bin deck-probe -- --config  # 설정 파일을 읽고 감시, 저장하면 즉시 반영
 cargo run --bin deck-probe -- --quiet --config --config-file docs/m2-test-config.json --run  # 액션 실제 실행
+cargo run --bin deck-probe -- --mics [--mute-test]  # 녹음 장치 목록·기본 장치·음소거 상태 진단
 cargo test -p numpad-deck-core gate::   # 테스트 하나만
 ```
 

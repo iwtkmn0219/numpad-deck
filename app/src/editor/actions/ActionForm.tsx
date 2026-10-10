@@ -65,6 +65,7 @@ function HotkeyForm({ action, onChange }: FormProps<Of<"hotkey">>) {
       if (result.kind === "keys") onChange({ type: "hotkey", keys: result.keys });
       else if (result.kind === "rejected") setMessage(f.rejected[result.reason]);
       else if (result.kind === "timeout") setMessage(f.timeout);
+      else if (result.kind === "blurred") setMessage(f.blurred);
     });
   };
 

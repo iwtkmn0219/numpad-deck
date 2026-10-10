@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use deck_core::action::apps::AppEntry;
 use deck_core::config::{Action, Config};
+use deck_core::key::{NumpadKey, RawKey};
 use tauri::{Manager, State};
 
 use osd::Osd;
@@ -54,6 +55,25 @@ fn cancel_recording(runtime: State<'_, Arc<Runtime>>) {
     runtime.cancel_recording();
 }
 
+/// 편집기 화면이 받은 키 하나 (녹화 중). `vk`·`extended`는 화면이 물리 키 위치로 만든다.
+#[tauri::command]
+fn record_key(
+    runtime: State<'_, Arc<Runtime>>,
+    vk: u16,
+    extended: bool,
+    down: bool,
+) -> Option<runtime::RecordResult> {
+    runtime.record_key(RawKey { vk, extended }, down)
+}
+
+/// 편집기 화면이 받은 넘패드 키 (NumLock 꺼짐). 키캡 글자로 받는다.
+#[tauri::command]
+fn press_deck_key(runtime: State<'_, Arc<Runtime>>, key: String) {
+    if let Some(k) = NumpadKey::ALL.into_iter().find(|k| k.label() == key) {
+        runtime.press_deck_key(k);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -69,7 +89,9 @@ pub fn run() {
             test_action,
             list_apps,
             start_recording,
-            cancel_recording
+            cancel_recording,
+            record_key,
+            press_deck_key
         ])
         .setup(|app| {
             let runtime = Arc::new(Runtime::start()?);

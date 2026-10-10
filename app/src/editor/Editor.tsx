@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Redo2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/i18n";
+import { installDeckKeyForwarding } from "./api";
 import { ButtonPanel } from "./ButtonPanel";
 import { KeyGrid, type Selection } from "./KeyGrid";
 import { PageTabs } from "./PageTabs";
@@ -12,6 +13,9 @@ export function Editor() {
   const { config, status, update, undo, redo, canUndo, canRedo } = useEditorConfig();
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Selection | null>({ kind: "button", key: "7" });
+
+  // 편집기가 앞에 있을 때도 넘패드 덱 키가 동작하게
+  useEffect(() => installDeckKeyForwarding(), []);
 
   // 되돌리기·밖에서 고침으로 페이지가 줄면 범위 안으로
   const pageCount = config?.pages.length ?? 0;

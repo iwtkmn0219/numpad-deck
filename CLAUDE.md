@@ -129,6 +129,8 @@ NumLock 상태는 캐싱하지 말고 **키 입력마다 다시 조회한다.** 
 
 ## 주의할 함정
 
+- **편집기(이 앱의 WebView2 창)가 앞이면 키 다운이 저수준 키보드 훅을 거치지 않는다** (3-2 실측: 훅 호출 수가 늘지 않음, 별도 프로세스의 훅도 마찬가지, 훅을 1초마다 다시 설치해도 같음, 관리자 권한 문제 아님). 그래서 편집기 안의 단축키 녹화와 넘패드 덱 키는 화면이 받은 키(`KeyboardEvent.code` → `app/src/editor/keymap.ts`)를 command `record_key`·`press_deck_key`로 코어에 넘긴다. 코어 훅의 녹화 모드는 프로브(`--record`)에서만 쓴다. 진단은 `NPDK_DIAG=1 npm run tauri dev`(1초마다 훅 호출 수·디스패처 처리 수).
+
 - **Shift + 넘패드**: NumLock ON + Shift + 넘패드 7이면 Windows가 가짜 Shift 업(`sc=0x22A`, 스캔 코드 0x200 비트, 확장 플래그 없음) → `VK_HOME`(확장 없음) → 넘패드 키 업 → 가짜 Shift 다운(`sc=0x2A`, 진짜와 구분 불가)을 보낸다(M1 실측). 덱 판정은 `GetKeyState(VK_NUMLOCK)`로 정확했다. 단축키 녹화에서는 가짜 Shift 업을 무시해야 한다.
 - **UIPI**: 관리자 권한 창(작업 관리자 등)이 앞에 있으면 일반 권한 훅은 입력을 받지 못하고 넘패드가 평소처럼 동작한다. v1.0은 안내만 한다.
 - **배포**: Microsoft Store(MSIX, Microsoft 서명) 우선, GitHub(NSIS + updater)·winget 보조. Store 빌드에서는 Tauri updater를 끈다.

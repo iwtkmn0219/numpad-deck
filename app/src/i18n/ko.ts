@@ -84,6 +84,7 @@ export const ko = {
           unknownKey: "이 키는 녹화할 수 없어요. 다른 키를 눌러 주세요.",
         } as Record<string, string>,
         timeout: "5초 동안 키 입력이 없어 녹화를 멈췄어요.",
+        blurred: "창 밖으로 포커스가 나가 녹화를 멈췄어요. Win+D 같은 Win 키 조합은 Windows가 먼저 처리해서 녹화할 수 없어요.",
         incomplete: "단축키를 녹화해 주세요.",
       },
       launch: {

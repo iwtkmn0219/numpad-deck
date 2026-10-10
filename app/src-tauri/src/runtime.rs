@@ -208,8 +208,12 @@ impl Runtime {
         };
 
         let (hook_tx, hook_rx) = mpsc::channel();
-        let hook =
-            Arc::new(hook::start(HookConfig::default(), hook_tx).map_err(|e| e.to_string())?);
+        let mut hook_config = HookConfig::default();
+        if diag() {
+            // 진단: 다른 프로그램의 훅에 순서를 뺏기는지 보려고 1초마다 다시 설치한다.
+            hook_config.reinstall_every = std::time::Duration::from_secs(1);
+        }
+        let hook = Arc::new(hook::start(hook_config, hook_tx).map_err(|e| e.to_string())?);
         start_diag();
         {
             let state = Arc::clone(&state);
@@ -348,7 +352,7 @@ fn dispatch_loop(
     hook: &HookHandle,
 ) {
     for event in events {
-        if diag() {
+        if diag() && !matches!(event, HookEvent::Reinstalled { .. }) {
             eprintln!("[진단] 디스패처 받음: {event:?}");
         }
         let effects = {
@@ -435,7 +439,9 @@ fn on_hook_event(
             }
         }
         HookEvent::Reinstalled { count, reason } => {
-            eprintln!("훅 재설치 {count}회 ({reason:?})");
+            if !diag() {
+                eprintln!("훅 재설치 {count}회 ({reason:?})");
+            }
             Effects::default()
         }
         HookEvent::Recorded { key, down } => {

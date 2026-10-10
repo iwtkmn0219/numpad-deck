@@ -9,7 +9,7 @@
 
 use tauri::image::Image;
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
-use tauri::tray::{TrayIcon, TrayIconBuilder};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Wry};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,6 +29,7 @@ pub struct View {
     pub config_error: Option<String>,
 }
 
+pub const MENU_EDITOR: &str = "editor";
 pub const MENU_PAUSE: &str = "pause";
 pub const MENU_OPEN_CONFIG: &str = "open-config";
 pub const MENU_QUIT: &str = "quit";
@@ -45,6 +46,7 @@ impl Tray {
     pub fn create(app: &AppHandle, view: &View) -> tauri::Result<Tray> {
         let status = MenuItem::with_id(app, "status", "", false, None::<&str>)?;
         let error = MenuItem::with_id(app, "error", "", false, None::<&str>)?;
+        let editor = MenuItem::with_id(app, MENU_EDITOR, "설정 열기", true, None::<&str>)?;
         let pause = CheckMenuItem::with_id(app, MENU_PAUSE, "일시정지", true, false, None::<&str>)?;
         let open = MenuItem::with_id(app, MENU_OPEN_CONFIG, "설정 파일 열기", true, None::<&str>)?;
         let quit = MenuItem::with_id(app, MENU_QUIT, "종료", true, None::<&str>)?;
@@ -54,6 +56,7 @@ impl Tray {
                 &status,
                 &error,
                 &PredefinedMenuItem::separator(app)?,
+                &editor,
                 &pause,
                 &open,
                 &PredefinedMenuItem::separator(app)?,
@@ -63,7 +66,18 @@ impl Tray {
         let icon = TrayIconBuilder::with_id("main")
             .icon(icon(view.mode))
             .menu(&menu)
-            .show_menu_on_left_click(true)
+            // Windows 관례: 왼쪽 클릭 = 편집기, 오른쪽 클릭 = 메뉴
+            .show_menu_on_left_click(false)
+            .on_tray_icon_event(|tray, event| {
+                if let TrayIconEvent::Click {
+                    button: MouseButton::Left,
+                    button_state: MouseButtonState::Up,
+                    ..
+                } = event
+                {
+                    crate::editor::open(tray.app_handle());
+                }
+            })
             .build(app)?;
         let tray = Tray {
             icon,

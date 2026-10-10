@@ -17,6 +17,7 @@ use deck_core::config::{self, Action, Config, ConfigWatcher};
 use deck_core::deck::{Deck, Dispatch};
 use deck_core::hook::{self, HookConfig, HookEvent, HookHandle};
 use deck_core::key::NumpadKey;
+use tauri::{AppHandle, Emitter};
 
 use crate::osd::{self, Osd, Payload, Show};
 use crate::tray::{Mode, Tray, View};
@@ -78,11 +79,16 @@ impl State {
     }
 }
 
+/// 편집기에 보내는 이벤트: 파일이 밖에서 바뀌어 다시 읽었다.
+pub const CONFIG_CHANGED: &str = "config://changed";
+
 /// 잠금을 푼 뒤 화면에 반영할 것.
 #[derive(Default)]
 struct Effects {
     tray: Option<View>,
     osd: Option<(Payload, Show)>,
+    /// 편집기가 열려 있으면 보낸다.
+    config_changed: Option<Config>,
 }
 
 /// 트레이와 OSD. 메인 스레드에서 만든 뒤 붙인다. 갱신할 때는 복제해 꺼내고 잠금을
@@ -91,6 +97,7 @@ struct Effects {
 struct Ui {
     tray: Option<Tray>,
     osd: Option<Arc<Osd>>,
+    app: Option<AppHandle>,
 }
 
 pub struct Runtime {
@@ -137,20 +144,23 @@ impl Runtime {
             config::watch(&config_path, config, move |result| {
                 let effects = {
                     let mut s = state.lock().unwrap();
-                    match result {
+                    let changed = match result {
                         Ok(config) => {
                             s.deck.on_config_changed(&config);
-                            s.config = config;
+                            s.config = config.clone();
                             s.config_error = None;
+                            Some(config)
                         }
                         Err(e) => {
                             eprintln!("설정 오류: {e}");
                             s.config_error = Some(e.to_string());
+                            None
                         }
-                    }
+                    };
                     Effects {
                         tray: Some(s.view()),
                         osd: None,
+                        config_changed: changed,
                     }
                 };
                 apply(&ui, effects);
@@ -184,20 +194,43 @@ impl Runtime {
         self.state.lock().unwrap().view()
     }
 
-    pub fn attach_ui(&self, tray: Tray, osd: Option<Arc<Osd>>) {
+    pub fn attach_ui(&self, app: AppHandle, tray: Tray, osd: Option<Arc<Osd>>) {
         {
             let mut ui = self.ui.lock().unwrap();
             ui.tray = Some(tray);
             ui.osd = osd;
+            ui.app = Some(app);
         }
         let view = self.view();
         apply(
             &self.ui,
             Effects {
                 tray: Some(view),
-                osd: None,
+                ..Effects::default()
             },
         );
+    }
+
+    pub fn config(&self) -> Config {
+        self.state.lock().unwrap().config.clone()
+    }
+
+    /// 편집기가 저장한다. 검증에 실패하면 저장하지 않고 이유를 돌려준다. 저장하면 파일
+    /// 감시를 기다리지 않고 바로 반영한다 (감시가 같은 내용을 다시 읽어도 무해하다).
+    pub fn save_config(&self, config: Config) -> Result<(), String> {
+        config::save(&self.config_path, &config).map_err(|e| e.to_string())?;
+        let effects = {
+            let mut s = self.state.lock().unwrap();
+            s.deck.on_config_changed(&config);
+            s.config = config;
+            s.config_error = None;
+            Effects {
+                tray: Some(s.view()),
+                ..Effects::default()
+            }
+        };
+        apply(&self.ui, effects);
+        Ok(())
     }
 
     pub fn toggle_pause(&self) {
@@ -208,6 +241,7 @@ impl Runtime {
             Effects {
                 tray: Some(s.view()),
                 osd: Some((s.payload(None, None), Show::For(osd::MODE))),
+                ..Effects::default()
             }
         };
         apply(&self.ui, effects);
@@ -249,17 +283,18 @@ fn on_hook_event(s: &mut State, event: HookEvent, executor: &Executor) -> Effect
                         executor.submit(button.label, button.action);
                     }
                     Effects {
-                        tray: None,
                         osd: Some((s.payload(Some(key), None), Show::For(osd::BUTTON))),
+                        ..Effects::default()
                     }
                 }
                 Dispatch::Page { .. } => Effects {
                     tray: Some(s.view()),
                     osd: Some((s.payload(None, None), Show::For(osd::PAGE))),
+                    ..Effects::default()
                 },
                 Dispatch::ToggleOsd => Effects {
-                    tray: None,
                     osd: Some((s.payload(None, None), Show::Toggle)),
+                    ..Effects::default()
                 },
             }
         }
@@ -270,6 +305,7 @@ fn on_hook_event(s: &mut State, event: HookEvent, executor: &Executor) -> Effect
             Effects {
                 tray: Some(s.view()),
                 osd: (changed && !s.paused).then(|| (s.payload(None, None), Show::For(osd::MODE))),
+                ..Effects::default()
             }
         }
         HookEvent::Reinstalled { count, reason } => {
@@ -288,11 +324,11 @@ fn exec_loop(events: Receiver<ExecEvent>, state: &Mutex<State>, ui: &Mutex<Ui>) 
             let effects = {
                 let s = state.lock().unwrap();
                 Effects {
-                    tray: None,
                     osd: Some((
                         s.payload(s.last_button, Some(format!("\"{label}\" 실패: {error}"))),
                         Show::For(osd::ERROR),
                     )),
+                    ..Effects::default()
                 }
             };
             apply(ui, effects);
@@ -301,10 +337,13 @@ fn exec_loop(events: Receiver<ExecEvent>, state: &Mutex<State>, ui: &Mutex<Ui>) 
 }
 
 fn apply(ui: &Mutex<Ui>, effects: Effects) {
-    let (tray, osd) = {
+    let (tray, osd, app) = {
         let ui = ui.lock().unwrap();
-        (ui.tray.clone(), ui.osd.clone())
+        (ui.tray.clone(), ui.osd.clone(), ui.app.clone())
     };
+    if let (Some(app), Some(config)) = (app, effects.config_changed) {
+        let _ = app.emit_to(crate::editor::LABEL, CONFIG_CHANGED, config);
+    }
     if let (Some(tray), Some(view)) = (tray, effects.tray) {
         tray.update(&view);
     }

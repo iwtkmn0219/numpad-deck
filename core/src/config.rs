@@ -17,6 +17,7 @@ use std::time::Duration;
 
 use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode, DebounceEventResult};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use ts_rs::TS;
 
 use crate::key::NumpadKey;
 use crate::layout::{self, Role, BUTTON_KEYS};
@@ -29,33 +30,42 @@ pub const MAX_DELAY_MS: u64 = 60_000;
 
 const DEFAULT_JSON: &str = include_str!("default_config.json");
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+// TypeScript 타입(`app/src/bindings/*.ts`)은 `cargo test`가 만든다 (ts-rs). 타입을 바꾸면
+// `cargo test -p numpad-deck-core`를 돌려 다시 만들고 함께 커밋한다.
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export, export_to = "../../app/src/bindings/")]
 pub struct Config {
     pub version: u32,
     pub pages: Vec<Page>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export, export_to = "../../app/src/bindings/")]
 pub struct Page {
     pub name: String,
     #[serde(default)]
+    #[ts(as = "BTreeMap<ButtonKeyName, Button>")]
     pub buttons: BTreeMap<ButtonKey, Button>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
+#[ts(export, export_to = "../../app/src/bindings/")]
 pub struct Button {
     pub label: String,
-    /// 아이콘 세트는 3단계에서 채운다.
+    /// Lucide 아이콘 이름 (예: `"play"`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub icon: Option<String>,
     pub action: Action,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export, export_to = "../../app/src/bindings/")]
 pub enum Action {
     /// 키 이름 배열. 예: `["Ctrl", "Shift", "S"]`. 이름은 [`crate::keys`] 참고.
     Hotkey {
@@ -65,6 +75,7 @@ pub enum Action {
     Launch {
         target: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
         args: Option<String>,
     },
     /// URL 또는 폴더.
@@ -82,6 +93,7 @@ pub enum Action {
         file: String,
         /// 0–1. 없으면 1.
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
         volume: Option<f32>,
     },
     Sequence {
@@ -89,12 +101,14 @@ pub enum Action {
     },
     /// `sequence` 안에서만 쓸 수 있다.
     Delay {
+        #[ts(type = "number")]
         ms: u64,
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../app/src/bindings/")]
 pub enum MediaCommand {
     PlayPause,
     Next,
@@ -103,6 +117,38 @@ pub enum MediaCommand {
     VolumeUp,
     VolumeDown,
     VolumeMute,
+}
+
+/// TypeScript 타입 생성 전용: 버튼 키 이름 (`"7"`, `"+"`, `"Enter"` …).
+/// 실제 값은 [`ButtonKey`]가 다룬다.
+#[allow(dead_code)]
+#[derive(TS)]
+#[ts(export, export_to = "../../app/src/bindings/")]
+enum ButtonKeyName {
+    #[ts(rename = "7")]
+    N7,
+    #[ts(rename = "8")]
+    N8,
+    #[ts(rename = "9")]
+    N9,
+    #[ts(rename = "+")]
+    Add,
+    #[ts(rename = "4")]
+    N4,
+    #[ts(rename = "5")]
+    N5,
+    #[ts(rename = "6")]
+    N6,
+    #[ts(rename = "1")]
+    N1,
+    #[ts(rename = "2")]
+    N2,
+    #[ts(rename = "3")]
+    N3,
+    #[ts(rename = "Enter")]
+    Enter,
+    #[ts(rename = "0")]
+    N0,
 }
 
 /// 버튼 역할을 하는 넘패드 키 (12개). JSON에서는 키캡 글자로 적는다.

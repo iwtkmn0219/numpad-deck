@@ -27,6 +27,12 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 pub const EVENT: &str = "osd://update";
+
+/// 모든 WebView 창이 같은 인자를 써야 한다 (인자가 다르면 데이터 폴더도 달라야 함).
+/// GPU 가속을 끈다. 작은 창에는 필요 없고, 끄면 WebView2 상주 메모리가 약 216MB →
+/// 109MB로 준다 (실측). 앞부분은 wry 기본 인자로, 덮어쓰므로 다시 넣는다.
+pub const BROWSER_ARGS: &str =
+    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-gpu --disable-gpu-compositing";
 const LABEL: &str = "osd";
 /// 작업 영역 가장자리에서 띄우는 거리 (물리 픽셀)
 const MARGIN: i32 = 12;
@@ -85,12 +91,7 @@ impl Osd {
             .focused(false)
             .focusable(false)
             .visible(false)
-            // GPU 가속을 끈다. 작은 OSD에는 필요 없고, 끄면 WebView2 상주 메모리가 약
-            // 216MB → 109MB로 준다 (실측). 앞부분은 wry 기본 인자로, 덮어쓰므로 다시 넣는다.
-            // 3단계 편집기 창도 같은 인자를 써야 한다 (인자가 다르면 데이터 폴더도 달라야 함).
-            .additional_browser_args(
-                "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-gpu --disable-gpu-compositing",
-            )
+            .additional_browser_args(BROWSER_ARGS)
             .build()?;
         window.set_ignore_cursor_events(true)?;
         let hwnd = window.hwnd()?.0 as isize;

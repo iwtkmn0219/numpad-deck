@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 현재 상태
 
-**2단계 완료, M2 통과(2026-10-10). 3단계 진행 중(계획 `docs/stage3-plan.md`, 검증 `docs/m3-checklist.md`): 3-1 편집기 뼈대 완료(수동 검증 통과). 다음은 3-2 액션 편집.** 1단계는 M1 통과(2026-10-09). Cargo 워크스페이스에 `core/` 크레이트(`numpad-deck-core`, lib 이름 `deck_core`)와 `app/src-tauri`(Tauri 2 앱 `numpad-deck`)가 있다. 앱은 트레이와 OSD 창 하나로 이뤄진다. 프런트엔드는 Vite 다중 진입점: `osd.html`(OSD), `index.html`(설정 편집기 자리, 3단계). 기획 근거는 `Numpad Deck 프로젝트 제안서.md`, M1 수동 검증 항목과 결과는 `docs/m1-checklist.md`, 2단계 계획(설정 스키마·액션 명세·OSD 동작 결정)은 `docs/stage2-plan.md`, 액션 수동 검증은 `docs/m2-checklist.md`(시험용 설정 `docs/m2-test-config.json`).
+**2단계 완료, M2 통과(2026-10-10). 3단계 진행 중(계획 `docs/stage3-plan.md`, 검증 `docs/m3-checklist.md`): 3-1 편집기 뼈대 완료(수동 검증 통과), 3-2 액션 편집 구현(수동 검증 대기).** 1단계는 M1 통과(2026-10-09). Cargo 워크스페이스에 `core/` 크레이트(`numpad-deck-core`, lib 이름 `deck_core`)와 `app/src-tauri`(Tauri 2 앱 `numpad-deck`)가 있다. 앱은 트레이와 OSD 창 하나로 이뤄진다. 프런트엔드는 Vite 다중 진입점: `osd.html`(OSD), `index.html`(설정 편집기 자리, 3단계). 기획 근거는 `Numpad Deck 프로젝트 제안서.md`, M1 수동 검증 항목과 결과는 `docs/m1-checklist.md`, 2단계 계획(설정 스키마·액션 명세·OSD 동작 결정)은 `docs/stage2-plan.md`, 액션 수동 검증은 `docs/m2-checklist.md`(시험용 설정 `docs/m2-test-config.json`).
 
 개념 검증용 AutoHotkey v2 프로토타입이 `~/Downloads/numpad-deck.ahk`에 있다(저장소 밖). 키 배치·페이지 전환·클릭 통과 OSD의 참고 구현이다.
 
@@ -15,22 +15,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `layout.rs`: v1.0 고정 키 배치.
 - `config.rs`: 설정 JSON 스키마(`Config`/`Page`/`Button`/`Action`), 검증, 원자적 저장, 폴더 감시로 즉시 반영. 기본 설정은 `default_config.json`(`include_str!`). 경로는 `%APPDATA%\NumpadDeck\config.json`.
 - `deck.rs`: 현재 페이지와 디스패처. 넘패드 키 → `Dispatch`(버튼/페이지/OSD 토글). 페이지 키는 끝에서 반대쪽으로 돈다. 설정이 바뀌어 페이지가 줄면 마지막 페이지로 옮긴다. Windows 의존 없음.
+- `record.rs`: 단축키 녹화. 녹화 모드에서 훅이 보낸 키 이벤트 → 이름 배열(보조 키 순서 Ctrl·Shift·Alt·Win, 좌우 구분 없음, Esc 취소, 넘패드·이름 없는 키 거부). Windows 의존 없음.
 - `keys.rs`: 단축키 키 이름(`"Ctrl"`, `"Win"`, `"F5"` …) ↔ VK·확장 플래그. 설정 검증과 (3단계) 단축키 녹화가 쓴다. Windows 의존 없음.
-- `hook.rs`: 훅 전용 스레드, 주기적·세션 잠금 해제·절전 복귀 때 재설치(숨은 창으로 알림 수신), NumLock 상태 변화 알림, 일시정지, `mpsc` 채널로 `HookEvent` 전달.
+- `hook.rs`: 훅 전용 스레드, 주기적·세션 잠금 해제·절전 복귀 때 재설치(숨은 창으로 알림 수신), NumLock 상태 변화 알림, 일시정지, **녹화 모드**(주입 아닌 모든 키를 막고 `Recorded`로 보냄, 5초 무입력이면 훅이 스스로 끝냄 — 키보드 먹통 방지), `mpsc` 채널로 `HookEvent` 전달.
 - `inject.rs`: `dwExtraInfo` 서명(`SIGNATURE`)을 붙인 `SendInput`. 단축키·유니코드 텍스트 주입 전에 사용자가 누르고 있는 보조 키를 뗀다(다시 누르지는 않는다: 끼임 방지). Alt·Win을 뗄 때는 마스크 키 `0xE8`을 끼운다.
-- `action/`: 액션 실행기(`Executor`). 전용 스레드 + 큐, 묶음은 별도 스레드, 실패는 `ExecEvent`로 알림. `shell.rs`(ShellExecuteEx, 오류 창 없음, `%환경변수%` 펼치기), `window.rs`(실행 파일로 창 찾기·포커스·같은 앱 다음 창), `mic.rs`(Core Audio로 연결된 **모든** 녹음 장치 음소거 토글 — 기본 장치만 바꾸면 오디오 인터페이스가 빠진다. ASIO 앱에는 적용 안 됨), `audio.rs`(rodio, 재생할 때만 장치 열고 3초 유휴 뒤 닫음 — 절전 방해 방지).
+- `action/`: 액션 실행기(`Executor`). 전용 스레드 + 큐, 묶음은 별도 스레드, 실패는 `ExecEvent`로 알림. `shell.rs`(ShellExecuteEx, 오류 창 없음, `%환경변수%` 펼치기), `window.rs`(실행 파일로 창 찾기·포커스·같은 앱 다음 창), `mic.rs`(Core Audio로 연결된 **모든** 녹음 장치 음소거 토글 — 기본 장치만 바꾸면 오디오 인터페이스가 빠진다. ASIO 앱에는 적용 안 됨), `audio.rs`(rodio, 재생할 때만 장치 열고 3초 유휴 뒤 닫음 — 절전 방해 방지), `apps.rs`(`shell:AppsFolder`로 설치된 앱 목록: 일반 앱은 exe 경로, 스토어 앱은 `shell:AppsFolder\ID`).
 - `bin/deck-probe.rs`: M1·M2 검증용 콘솔 프로그램.
 
 `app/src-tauri/src/` 구성:
 
-- `lib.rs`: Tauri 진입점. 단일 인스턴스(훅이 둘이면 버튼이 두 번 실행됨, 두 번째 실행은 편집기를 연다), 창 없이 상주(`ExitRequested` 막음), 트레이 메뉴 이벤트, command `get_config`·`save_config`.
+- `lib.rs`: Tauri 진입점. 단일 인스턴스(훅이 둘이면 버튼이 두 번 실행됨, 두 번째 실행은 편집기를 연다), 창 없이 상주(`ExitRequested` 막음), 트레이 메뉴 이벤트, command `get_config`·`save_config`·`test_action`·`list_apps`(spawn_blocking + COM)·`start_recording`·`cancel_recording`, `tauri-plugin-dialog`(파일·폴더 고르기).
 - `editor.rs`: 편집기 창. 열 때 만들고 닫으면 파기. OSD와 같은 `BROWSER_ARGS`.
 - `runtime.rs`: 코어 연결. 훅 이벤트를 받는 디스패처 스레드 → `Deck` → `Executor`. 설정 감시(밖에서 바뀌면 편집기에 `config://changed`), 편집기 저장(`save_config`: 코어 검증·저장 후 즉시 반영), 일시정지(`HookHandle::set_paused`), 상태를 트레이에 반영.
 - `tray.rs`: 트레이 아이콘(32×32 RGBA를 코드로 그림: 숫자 모드=테두리, 덱 모드=파란 칸, 일시정지=회색·가운데 줄 빔)과 메뉴. 왼쪽 클릭 = 편집기, 오른쪽 클릭 = 메뉴.
 - `osd.rs`: OSD 창. 시작할 때 숨긴 채 만들고 `WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW` + `set_ignore_cursor_events`(클릭 통과). 마우스가 있는 모니터 작업 영역 우측 하단에 `SWP_NOACTIVATE`로 띄운다. 창 조작은 모두 비동기(`SWP_ASYNCWINDOWPOS`, `ShowWindowAsync`). 내용은 `osd://update` 이벤트로 보낸다. 숨김 예약은 세대 번호로 무효화, `-` 키는 고정 토글. WebView2는 `--disable-gpu --disable-gpu-compositing`으로 띄운다(상주 메모리 약 116MB, GPU를 켜면 약 223MB). 편집기 창도 같은 인자를 써야 한다.
 - **교착 주의**: `runtime.rs`는 상태 잠금 안에서 계산만 하고 트레이·OSD 갱신은 잠금을 푼 뒤 한다(`Effects` → `apply`). 트레이 갱신은 메인 스레드를 기다리는데 메뉴 처리(메인 스레드)도 같은 잠금을 잡기 때문이다.
 
-`app/src/`: `osd/`(OSD React 화면, `types.ts`의 `OsdPayload`는 `osd.rs`의 `Payload`와 모양이 같아야 함), `editor/`(편집기: `useEditorConfig`가 자동 저장 0.3초·되돌리기 50개·같은 입력란 연속 입력 묶기), `shared/layout.ts`(OSD·편집기 공용 넘패드 배치), `i18n/`(UI 문자열, 지금은 `ko`만), `bindings/`(**ts-rs 생성물, 손으로 고치지 말 것**: `core/src/config.rs` 타입을 바꾸면 `cargo test -p numpad-deck-core`로 다시 만든다), `components/ui/`(shadcn/ui, Nova 프리셋, 글꼴은 Segoe UI·맑은 고딕), `index.css`(Tailwind v4).
+`app/src/`: `osd/`(OSD React 화면, `types.ts`의 `OsdPayload`는 `osd.rs`의 `Payload`와 모양이 같아야 함), `editor/`(편집기: `useEditorConfig`가 자동 저장 0.3초·되돌리기 50개·같은 입력란 연속 입력 묶기, `ButtonPanel`은 동작이 완성되기 전까지 화면에만 두고 저장하지 않음, `actions/`는 동작 카드·종류별 입력 화면·`meta.ts`의 완성 검사 — 코어 검증보다 너그러우면 안 됨), `shared/layout.ts`(OSD·편집기 공용 넘패드 배치), `i18n/`(UI 문자열, 지금은 `ko`만), `bindings/`(**ts-rs 생성물, 손으로 고치지 말 것**: `core/src/config.rs` 타입을 바꾸면 `cargo test -p numpad-deck-core`로 다시 만든다), `components/ui/`(shadcn/ui, Nova 프리셋, 글꼴은 Segoe UI·맑은 고딕), `index.css`(Tailwind v4).
 
 ## 작업 방식
 

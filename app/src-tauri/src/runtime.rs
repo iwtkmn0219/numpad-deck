@@ -17,6 +17,8 @@ use deck_core::config::{self, Action, Config, ConfigWatcher};
 use deck_core::deck::{Deck, Dispatch};
 use deck_core::hook::{self, HookConfig, HookEvent, HookHandle};
 use deck_core::key::NumpadKey;
+use deck_core::record::{Outcome, Recorder, Rejection};
+use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 use crate::osd::{self, Osd, Payload, Show};
@@ -31,6 +33,8 @@ struct State {
     config_error: Option<String>,
     /// 마지막으로 누른 버튼 키. 실행 실패를 OSD에 표시할 때 쓴다.
     last_button: Option<NumpadKey>,
+    /// 단축키 녹화 중이면 `Some`
+    recorder: Option<Recorder>,
 }
 
 impl State {
@@ -81,6 +85,38 @@ impl State {
 
 /// 편집기에 보내는 이벤트: 파일이 밖에서 바뀌어 다시 읽었다.
 pub const CONFIG_CHANGED: &str = "config://changed";
+/// 편집기에 보내는 이벤트: 단축키 녹화가 끝났다.
+pub const HOTKEY_RECORDED: &str = "hotkey://recorded";
+
+/// 단축키 녹화 결과. 프런트엔드 `src/editor/api.ts`의 `RecordResult`와 모양이 같아야 한다.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum RecordResult {
+    Keys {
+        keys: Vec<String>,
+    },
+    Cancelled,
+    /// `"numpadKey"` | `"unknownKey"`
+    Rejected {
+        reason: &'static str,
+    },
+    Timeout,
+}
+
+impl From<Outcome> for RecordResult {
+    fn from(outcome: Outcome) -> Self {
+        match outcome {
+            Outcome::Keys(keys) => RecordResult::Keys { keys },
+            Outcome::Cancelled => RecordResult::Cancelled,
+            Outcome::Rejected(Rejection::NumpadKey) => RecordResult::Rejected {
+                reason: "numpadKey",
+            },
+            Outcome::Rejected(Rejection::UnknownKey) => RecordResult::Rejected {
+                reason: "unknownKey",
+            },
+        }
+    }
+}
 
 /// 잠금을 푼 뒤 화면에 반영할 것.
 #[derive(Default)]
@@ -89,6 +125,7 @@ struct Effects {
     osd: Option<(Payload, Show)>,
     /// 편집기가 열려 있으면 보낸다.
     config_changed: Option<Config>,
+    recorded: Option<RecordResult>,
 }
 
 /// 트레이와 OSD. 메인 스레드에서 만든 뒤 붙인다. 갱신할 때는 복제해 꺼내고 잠금을
@@ -103,7 +140,7 @@ struct Ui {
 pub struct Runtime {
     state: Arc<Mutex<State>>,
     ui: Arc<Mutex<Ui>>,
-    hook: HookHandle,
+    hook: Arc<HookHandle>,
     executor: Executor,
     config_path: PathBuf,
     _watcher: Option<ConfigWatcher>,
@@ -127,6 +164,7 @@ impl Runtime {
             paused: false,
             config_error,
             last_button: None,
+            recorder: None,
         }));
         let ui: Arc<Mutex<Ui>> = Arc::default();
 
@@ -159,8 +197,8 @@ impl Runtime {
                     };
                     Effects {
                         tray: Some(s.view()),
-                        osd: None,
                         config_changed: changed,
+                        ..Effects::default()
                     }
                 };
                 apply(&ui, effects);
@@ -170,13 +208,15 @@ impl Runtime {
         };
 
         let (hook_tx, hook_rx) = mpsc::channel();
-        let hook = hook::start(HookConfig::default(), hook_tx).map_err(|e| e.to_string())?;
+        let hook =
+            Arc::new(hook::start(HookConfig::default(), hook_tx).map_err(|e| e.to_string())?);
         {
             let state = Arc::clone(&state);
             let ui = Arc::clone(&ui);
             let executor = executor.clone();
+            let hook = Arc::clone(&hook);
             spawn_named("deck-dispatch", move || {
-                dispatch_loop(hook_rx, &state, &ui, &executor)
+                dispatch_loop(hook_rx, &state, &ui, &executor, &hook)
             });
         }
 
@@ -247,6 +287,45 @@ impl Runtime {
         apply(&self.ui, effects);
     }
 
+    /// 편집기의 `시험 실행`.
+    pub fn test_action(&self, label: String, action: Action) {
+        self.executor.submit(label, action);
+    }
+
+    /// 단축키 녹화를 시작한다. 결과는 [`HOTKEY_RECORDED`] 이벤트로 편집기에 간다.
+    pub fn start_recording(&self) {
+        self.state.lock().unwrap().recorder = Some(Recorder::new());
+        self.hook.start_recording();
+        // 훅이 시간 초과로 녹화를 끝내면 편집기에 알린다.
+        let state = Arc::clone(&self.state);
+        let ui = Arc::clone(&self.ui);
+        let hook = Arc::clone(&self.hook);
+        spawn_named("deck-record-watch", move || loop {
+            thread::sleep(std::time::Duration::from_millis(200));
+            let mut s = state.lock().unwrap();
+            if s.recorder.is_none() {
+                return;
+            }
+            if !hook.recording() {
+                s.recorder = None;
+                drop(s);
+                apply(
+                    &ui,
+                    Effects {
+                        recorded: Some(RecordResult::Timeout),
+                        ..Effects::default()
+                    },
+                );
+                return;
+            }
+        });
+    }
+
+    pub fn cancel_recording(&self) {
+        self.hook.stop_recording();
+        self.state.lock().unwrap().recorder = None;
+    }
+
     pub fn open_config(&self) {
         self.executor.submit(
             "설정 파일 열기",
@@ -262,17 +341,23 @@ fn dispatch_loop(
     state: &Mutex<State>,
     ui: &Mutex<Ui>,
     executor: &Executor,
+    hook: &HookHandle,
 ) {
     for event in events {
         let effects = {
             let mut s = state.lock().unwrap();
-            on_hook_event(&mut s, event, executor)
+            on_hook_event(&mut s, event, executor, hook)
         };
         apply(ui, effects);
     }
 }
 
-fn on_hook_event(s: &mut State, event: HookEvent, executor: &Executor) -> Effects {
+fn on_hook_event(
+    s: &mut State,
+    event: HookEvent,
+    executor: &Executor,
+    hook: &HookHandle,
+) -> Effects {
     match event {
         HookEvent::Fire(key) => {
             let State { config, deck, .. } = &mut *s;
@@ -312,6 +397,20 @@ fn on_hook_event(s: &mut State, event: HookEvent, executor: &Executor) -> Effect
             eprintln!("훅 재설치 {count}회 ({reason:?})");
             Effects::default()
         }
+        HookEvent::Recorded { key, down } => {
+            let outcome = s.recorder.as_mut().and_then(|r| r.on_key(key, down));
+            match outcome {
+                Some(outcome) => {
+                    hook.stop_recording();
+                    s.recorder = None;
+                    Effects {
+                        recorded: Some(outcome.into()),
+                        ..Effects::default()
+                    }
+                }
+                None => Effects::default(),
+            }
+        }
         HookEvent::Trace(_) => Effects::default(),
     }
 }
@@ -341,8 +440,13 @@ fn apply(ui: &Mutex<Ui>, effects: Effects) {
         let ui = ui.lock().unwrap();
         (ui.tray.clone(), ui.osd.clone(), ui.app.clone())
     };
-    if let (Some(app), Some(config)) = (app, effects.config_changed) {
-        let _ = app.emit_to(crate::editor::LABEL, CONFIG_CHANGED, config);
+    if let Some(app) = &app {
+        if let Some(config) = effects.config_changed {
+            let _ = app.emit_to(crate::editor::LABEL, CONFIG_CHANGED, config);
+        }
+        if let Some(result) = effects.recorded {
+            let _ = app.emit_to(crate::editor::LABEL, HOTKEY_RECORDED, result);
+        }
     }
     if let (Some(tray), Some(view)) = (tray, effects.tray) {
         tray.update(&view);

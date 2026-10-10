@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "앱 창(2-5 OSD, 3단계 편집기)에 주는 기본 권한",
   "windows": ["*"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "dialog:allow-open"]
 }

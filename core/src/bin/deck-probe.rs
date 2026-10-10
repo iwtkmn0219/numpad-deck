@@ -7,7 +7,7 @@
 //! - Shift + 넘패드에서 가짜 Shift 이벤트가 어떻게 보이는가
 //! - 콜백 처리 시간이 충분히 짧은가
 //!
-//! 사용법: deck-probe [--quiet] [--loop-test] [--reinstall-secs N] [--config [--config-file PATH] [--run]] | --mics [--mute-test]
+//! 사용법: deck-probe [--quiet] [--loop-test] [--reinstall-secs N] [--config [--config-file PATH] [--run]] | --mics [--mute-test] | --record | --apps
 //!   --quiet           판정 기록 없이 버튼 실행과 NumLock 불일치만 출력.
 //!                     통계(불일치 횟수, 최대 콜백)는 그대로 집계한다.
 //!   --loop-test       버튼이 실행될 때마다 넘패드 5(VK_CLEAR)를 주입해
@@ -20,6 +20,8 @@
 //!   --run             --config와 함께: 버튼의 액션을 실제로 실행한다.
 //!   --mics            녹음 장치 목록과 기본 장치·음소거 상태를 출력하고 끝낸다.
 //!   --mute-test       --mics와 함께: 장치마다 음소거 → 3초 대기 → 원래대로를 차례로 한다.
+//!   --record          단축키 녹화를 한 번 해 보고 결과를 출력한 뒤 끝낸다.
+//!   --apps            설치된 앱 목록(편집기의 앱 고르기와 같은 것)을 출력한다.
 //!
 //! 끝내려면 Ctrl+C.
 
@@ -95,6 +97,24 @@ fn main() -> ExitCode {
     let raw: Vec<String> = std::env::args().skip(1).collect();
     if raw.iter().any(|a| a == "--mics") {
         return deck_core::action::with_com(|| mics(raw.iter().any(|a| a == "--mute-test")));
+    }
+    if raw.iter().any(|a| a == "--record") {
+        return record_once();
+    }
+    if raw.iter().any(|a| a == "--apps") {
+        return match deck_core::action::with_com(deck_core::action::apps::list) {
+            Ok(apps) => {
+                for a in &apps {
+                    println!("{}  →  {}", a.name, a.target);
+                }
+                println!("{}개", apps.len());
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
     }
     let args = match parse_args() {
         Ok(args) => args,
@@ -204,6 +224,7 @@ fn main() -> ExitCode {
                     println!("{}", format_trace(&t, mismatch));
                 }
             }
+            HookEvent::Recorded { .. } => {}
             HookEvent::NumLock(on) => {
                 println!(
                     "· NumLock {}",
@@ -249,6 +270,51 @@ fn start_executor() -> std::io::Result<Executor> {
         }
     });
     Ok(executor)
+}
+
+/// 단축키 녹화를 한 번 해 본다. 녹화 중에는 모든 키가 막힌다 (5초 동안 키가 없으면 끝).
+fn record_once() -> ExitCode {
+    use deck_core::record::{Outcome, Recorder};
+    let (tx, rx) = mpsc::channel();
+    let hook = match hook::start(HookConfig::default(), tx) {
+        Ok(handle) => handle,
+        Err(e) => {
+            eprintln!("훅 설치 실패: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    println!(
+        "단축키를 눌러 보세요 (예: Ctrl+Shift+S, Win). Esc = 취소, 5초 동안 입력이 없으면 끝."
+    );
+    hook.start_recording();
+    let mut recorder = Recorder::new();
+    loop {
+        match rx.recv_timeout(Duration::from_millis(250)) {
+            Ok(HookEvent::Recorded { key, down }) => {
+                println!(
+                    "  {} vk=0x{:02X}{}",
+                    if down { "↓" } else { "↑" },
+                    key.vk,
+                    if key.extended { " ext" } else { "" }
+                );
+                if let Some(outcome) = recorder.on_key(key, down) {
+                    hook.stop_recording();
+                    match outcome {
+                        Outcome::Keys(keys) => println!("녹화됨: {}", keys.join(" + ")),
+                        Outcome::Cancelled => println!("취소됨"),
+                        Outcome::Rejected(why) => println!("녹화할 수 없는 키: {why:?}"),
+                    }
+                    return ExitCode::SUCCESS;
+                }
+            }
+            Ok(_) => {}
+            Err(_) if !hook.recording() => {
+                println!("시간 초과로 녹화를 끝냈습니다.");
+                return ExitCode::SUCCESS;
+            }
+            Err(_) => {}
+        }
+    }
 }
 
 /// 녹음 장치 진단. 오디오 인터페이스처럼 기본 장치가 아닌 마이크가 음소거되는지 본다.

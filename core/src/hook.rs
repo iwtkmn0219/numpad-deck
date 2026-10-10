@@ -14,8 +14,9 @@
 //! 이 모듈 안에서는 블로킹 작업·I/O·액션 실행을 하지 않는다.
 
 use std::cell::RefCell;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
+use std::sync::OnceLock;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -51,6 +52,8 @@ pub enum HookEvent {
     Reinstalled { count: u32, reason: Reinstall },
     /// NumLock 상태. 시작할 때 한 번, 이후 바뀔 때마다 보낸다.
     NumLock(bool),
+    /// 녹화 모드에서 받은 키 (주입·가짜 Shift 제외). [`crate::record::Recorder`]에 넣는다.
+    Recorded { key: RawKey, down: bool },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -101,6 +104,17 @@ impl Default for HookConfig {
 /// 일시정지. 훅 스레드가 하나뿐이라 전역으로 둔다.
 static PAUSED: AtomicBool = AtomicBool::new(false);
 
+/// 녹화 마감 시각 ([`now_ms`] 기준). 0이면 녹화 중이 아니다.
+static RECORD_UNTIL: AtomicU64 = AtomicU64::new(0);
+/// 녹화 중 키 입력이 이만큼 없으면 녹화를 끝낸다. 녹화 중에는 모든 키를 막으므로, 앱이
+/// 멈춰도 키보드가 먹통으로 남지 않게 훅이 스스로 끝낸다.
+pub const RECORD_IDLE_MS: u64 = 5_000;
+
+fn now_ms() -> u64 {
+    static EPOCH: OnceLock<Instant> = OnceLock::new();
+    EPOCH.get_or_init(Instant::now).elapsed().as_millis() as u64 + 1
+}
+
 /// 훅 스레드 핸들. 버리면 훅을 풀고 스레드를 끝낸다.
 pub struct HookHandle {
     thread_id: u32,
@@ -116,6 +130,22 @@ impl HookHandle {
 
     pub fn paused(&self) -> bool {
         PAUSED.load(Ordering::Relaxed)
+    }
+
+    /// 단축키 녹화를 시작한다. 녹화 중에는 주입이 아닌 모든 키를 막고
+    /// [`HookEvent::Recorded`]로 보낸다. [`RECORD_IDLE_MS`] 동안 키가 없으면 저절로 끝난다.
+    pub fn start_recording(&self) {
+        RECORD_UNTIL.store(now_ms() + RECORD_IDLE_MS, Ordering::Relaxed);
+    }
+
+    pub fn stop_recording(&self) {
+        RECORD_UNTIL.store(0, Ordering::Relaxed);
+    }
+
+    /// 녹화 중인지 (시간이 지나 저절로 끝났으면 `false`)
+    pub fn recording(&self) -> bool {
+        let until = RECORD_UNTIL.load(Ordering::Relaxed);
+        until != 0 && now_ms() < until
     }
 
     pub fn stop(mut self) {
@@ -377,6 +407,22 @@ fn handle(info: &KBDLLHOOKSTRUCT, down: bool) -> bool {
         let Some(state) = guard.as_mut() else {
             return false;
         };
+
+        // 녹화 모드: 덱 판정을 건너뛰고 모든 키를 막아 녹화로 보낸다.
+        if !injected {
+            let until = RECORD_UNTIL.load(Ordering::Relaxed);
+            if until != 0 {
+                let now = now_ms();
+                if now < until {
+                    if info.scanCode & SIMULATED_SCAN == 0 {
+                        RECORD_UNTIL.store(now + RECORD_IDLE_MS, Ordering::Relaxed);
+                        let _ = state.events.send(HookEvent::Recorded { key: raw, down });
+                    }
+                    return true;
+                }
+                RECORD_UNTIL.store(0, Ordering::Relaxed);
+            }
+        }
 
         // 캐싱하지 않고 키 입력마다 조회한다 (원격 데스크톱·가상 머신 대비).
         let numlock_on = key.map(|_| numlock_is_on());

@@ -4,6 +4,7 @@
 //! (`sequence`)은 지연이 길 수 있으므로 별도 스레드에서 돌려, 그동안 누른 다른 버튼이
 //! 기다리지 않게 한다. 액션이 실패해도 실행기는 계속 돌고, 실패는 이벤트로 알린다.
 
+pub mod apps;
 mod audio;
 pub mod mic;
 mod shell;

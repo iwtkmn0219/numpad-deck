@@ -10,7 +10,8 @@ mod tray;
 
 use std::sync::Arc;
 
-use deck_core::config::Config;
+use deck_core::action::apps::AppEntry;
+use deck_core::config::{Action, Config};
 use tauri::{Manager, State};
 
 use osd::Osd;
@@ -28,6 +29,31 @@ fn save_config(runtime: State<'_, Arc<Runtime>>, config: Config) -> Result<(), S
     runtime.save_config(config)
 }
 
+#[tauri::command]
+fn test_action(runtime: State<'_, Arc<Runtime>>, label: String, action: Action) {
+    runtime.test_action(label, action);
+}
+
+/// 설치된 앱 목록. COM 셸 API라 느릴 수 있어 메인 스레드 밖에서 읽는다.
+#[tauri::command]
+async fn list_apps() -> Result<Vec<AppEntry>, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        deck_core::action::with_com(deck_core::action::apps::list)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn start_recording(runtime: State<'_, Arc<Runtime>>) {
+    runtime.start_recording();
+}
+
+#[tauri::command]
+fn cancel_recording(runtime: State<'_, Arc<Runtime>>) {
+    runtime.cancel_recording();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -36,7 +62,15 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             editor::open(app);
         }))
-        .invoke_handler(tauri::generate_handler![get_config, save_config])
+        .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![
+            get_config,
+            save_config,
+            test_action,
+            list_apps,
+            start_recording,
+            cancel_recording
+        ])
         .setup(|app| {
             let runtime = Arc::new(Runtime::start()?);
             let tray = Tray::create(app.handle(), &runtime.view())?;

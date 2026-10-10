@@ -294,6 +294,7 @@ impl Runtime {
 
     /// 단축키 녹화를 시작한다. 결과는 [`HOTKEY_RECORDED`] 이벤트로 편집기에 간다.
     pub fn start_recording(&self) {
+        eprintln!("녹화 시작");
         self.state.lock().unwrap().recorder = Some(Recorder::new());
         self.hook.start_recording();
         // 훅이 시간 초과로 녹화를 끝내면 편집기에 알린다.
@@ -307,6 +308,7 @@ impl Runtime {
                 return;
             }
             if !hook.recording() {
+                eprintln!("녹화 시간 초과");
                 s.recorder = None;
                 drop(s);
                 apply(
@@ -322,6 +324,7 @@ impl Runtime {
     }
 
     pub fn cancel_recording(&self) {
+        eprintln!("녹화 취소 (편집기)");
         self.hook.stop_recording();
         self.state.lock().unwrap().recorder = None;
     }
@@ -399,6 +402,13 @@ fn on_hook_event(
         }
         HookEvent::Recorded { key, down } => {
             let outcome = s.recorder.as_mut().and_then(|r| r.on_key(key, down));
+            eprintln!(
+                "녹화: {} vk=0x{:02X}{} → {:?}",
+                if down { "↓" } else { "↑" },
+                key.vk,
+                if key.extended { " ext" } else { "" },
+                outcome
+            );
             match outcome {
                 Some(outcome) => {
                     hook.stop_recording();

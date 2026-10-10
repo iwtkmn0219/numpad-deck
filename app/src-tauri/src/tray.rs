@@ -6,11 +6,23 @@
 //! - 숫자 모드(NumLock ON): 테두리만 있는 칸
 //! - 덱 모드(NumLock OFF): 파랗게 채운 칸
 //! - 일시정지: 회색으로 채운 칸 + 가운데 줄 비움
+//!
+//! 오른쪽 클릭 메뉴는 직접 띄운다. `tray-icon`은 메뉴 아래쪽을 커서(작업 표시줄 위)에
+//! 맞추는데, 전체 화면 앱에서 Win 키로 작업 표시줄을 불러오면 작업 표시줄이 메뉴보다 위에
+//! 그려져 아래 항목(종료)이 가려진다. 그래서 메뉴를 작업 영역 안(작업 표시줄 바깥)에 둔다.
 
 use tauri::image::Image;
-use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{CheckMenuItem, ContextMenu, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Wry};
+use windows::Win32::Foundation::{HWND, LPARAM, POINT, WPARAM};
+use windows::Win32::Graphics::Gdi::{
+    GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+};
+use windows::Win32::UI::WindowsAndMessaging::{
+    GetCursorPos, PostMessageW, SetForegroundWindow, TrackPopupMenuEx, HMENU, TPM_BOTTOMALIGN,
+    TPM_LEFTALIGN, TPM_RIGHTALIGN, TPM_TOPALIGN, WM_NULL,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -63,22 +75,29 @@ impl Tray {
                 &quit,
             ],
         )?;
+        let popup = menu.clone();
         let icon = TrayIconBuilder::with_id("main")
             .icon(icon(view.mode))
+            // 메뉴를 붙여야 메뉴 명령이 트레이 창으로 전달된다. 띄우는 것은 직접 한다.
             .menu(&menu)
             // Windows 관례: 왼쪽 클릭 = 편집기, 오른쪽 클릭 = 메뉴
             .show_menu_on_left_click(false)
-            .on_tray_icon_event(|tray, event| {
+            .on_tray_icon_event(move |tray, event| {
                 if let TrayIconEvent::Click {
-                    button: MouseButton::Left,
+                    button,
                     button_state: MouseButtonState::Up,
                     ..
                 } = event
                 {
-                    crate::editor::open(tray.app_handle());
+                    match button {
+                        MouseButton::Left => crate::editor::open(tray.app_handle()),
+                        MouseButton::Right => show_menu(tray, &popup),
+                        _ => {}
+                    }
                 }
             })
             .build(app)?;
+        icon.with_inner_tray_icon(|t| t.set_show_menu_on_right_click(false))?;
         let tray = Tray {
             icon,
             status,
@@ -117,6 +136,48 @@ impl Tray {
 }
 
 const SIZE: u32 = 32;
+
+/// 오른쪽 클릭 메뉴를 작업 영역 안에 띄운다. 메인 스레드에서 불린다(트레이 이벤트).
+fn show_menu(tray: &TrayIcon, menu: &Menu<Wry>) {
+    let Ok(owner) = tray.with_inner_tray_icon(|t| t.window_handle() as isize) else {
+        return;
+    };
+    let Ok(hmenu) = menu.hpopupmenu() else { return };
+    unsafe {
+        let owner = HWND(owner as *mut _);
+        let mut pt = POINT::default();
+        let _ = GetCursorPos(&mut pt);
+        let mut info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        let monitor = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+        let mut flags = TPM_BOTTOMALIGN | TPM_LEFTALIGN;
+        if GetMonitorInfoW(monitor, &mut info).as_bool() {
+            let (work, full) = (info.rcWork, info.rcMonitor);
+            // 작업 표시줄이 있는 쪽에서 메뉴를 작업 영역 경계에 붙인다.
+            flags = if work.bottom < full.bottom && pt.y >= work.bottom {
+                pt.y = work.bottom;
+                TPM_BOTTOMALIGN | TPM_LEFTALIGN
+            } else if work.top > full.top && pt.y < work.top {
+                pt.y = work.top;
+                TPM_TOPALIGN | TPM_LEFTALIGN
+            } else if work.left > full.left && pt.x < work.left {
+                pt.x = work.left;
+                TPM_BOTTOMALIGN | TPM_LEFTALIGN
+            } else if work.right < full.right && pt.x >= work.right {
+                pt.x = work.right;
+                TPM_BOTTOMALIGN | TPM_RIGHTALIGN
+            } else {
+                TPM_BOTTOMALIGN | TPM_LEFTALIGN
+            };
+        }
+        // 메뉴 바깥을 누르면 닫히도록 트레이 창을 앞으로 (Windows 트레이 메뉴 관례)
+        let _ = SetForegroundWindow(owner);
+        let _ = TrackPopupMenuEx(HMENU(hmenu as *mut _), flags.0, pt.x, pt.y, owner, None);
+        let _ = PostMessageW(Some(owner), WM_NULL, WPARAM(0), LPARAM(0));
+    }
+}
 
 /// 32×32 RGBA 아이콘을 그린다.
 pub fn icon(mode: Mode) -> Image<'static> {

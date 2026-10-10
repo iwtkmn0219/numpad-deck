@@ -5,8 +5,12 @@
 //! 1. 훅은 메시지 루프를 가진 전용 스레드에서 돈다.
 //! 2. 콜백은 판정과 채널 적재만 하고 바로 반환한다. 액션 실행은 채널을 받는 쪽이 맡는다.
 //! 3. 훅 제거를 알아낼 API가 없으므로 주기적으로, 그리고 세션 잠금 해제·절전 복귀 때
-//!    다시 설치한다. 잠금 해제·절전 복귀 알림을 받으려고 이 스레드에 보이지 않는 창을
-//!    하나 만든다.
+//!    다시 설치한다. 잠금 해제·절전 복귀 알림은 **별도 스레드**의 보이지 않는 창이 받아
+//!    훅 스레드에 전달한다.
+//!
+//! 훅 스레드에는 창을 두지 않는다. 창이 있으면 이 앱의 창(편집기)이 맨 앞일 때 입력기
+//! (IME/TSF)가 그 스레드와 통신하느라 훅 응답이 늦어지고, Windows가 키를 훅에 보내지
+//! 않고 건너뛴다 (3-2 실측: 편집기가 앞이면 덱 버튼·단축키 녹화가 모두 안 됨).
 //!
 //! 이 스레드는 NumLock 상태가 바뀔 때도 알린다(트레이 모드 표시용). 일시정지 중에는
 //! 새로 누른 키를 모두 통과시킨다.
@@ -109,6 +113,11 @@ static RECORD_UNTIL: AtomicU64 = AtomicU64::new(0);
 /// 녹화 중 키 입력이 이만큼 없으면 녹화를 끝낸다. 녹화 중에는 모든 키를 막으므로, 앱이
 /// 멈춰도 키보드가 먹통으로 남지 않게 훅이 스스로 끝낸다.
 pub const RECORD_IDLE_MS: u64 = 5_000;
+
+fn record_injected_for_test() -> bool {
+    static FLAG: OnceLock<bool> = OnceLock::new();
+    *FLAG.get_or_init(|| std::env::var_os("NPDK_RECORD_INJECTED").is_some())
+}
 
 fn now_ms() -> u64 {
     static EPOCH: OnceLock<Instant> = OnceLock::new();
@@ -243,8 +252,9 @@ fn run(config: HookConfig, events: Sender<HookEvent>, ready: Sender<Result<u32, 
     // 창 없는 타이머는 넘긴 ID를 무시하고 새 ID를 돌려준다.
     let reinstall_timer = unsafe { SetTimer(None, 0, interval_ms, None) };
     let numlock_timer = unsafe { SetTimer(None, 0, NUMLOCK_POLL_MS, None) };
-    let notify_window = create_notify_window();
-    let _ = ready.send(Ok(unsafe { GetCurrentThreadId() }));
+    let hook_thread = unsafe { GetCurrentThreadId() };
+    let notify_thread = start_notify_thread(hook_thread);
+    let _ = ready.send(Ok(hook_thread));
 
     let mut reinstalls = 0;
     loop {
@@ -261,10 +271,7 @@ fn run(config: HookConfig, events: Sender<HookEvent>, ready: Sender<Result<u32, 
             }
             WM_REINSTALL if msg.wParam.0 == REQUEST_UNLOCK => Some(Reinstall::SessionUnlock),
             WM_REINSTALL => Some(Reinstall::Resume),
-            _ => {
-                unsafe { DispatchMessageW(&msg) };
-                None
-            }
+            _ => None,
         };
         if let Some(reason) = reason {
             // 새 훅을 먼저 걸고 옛 훅을 푼다. 그 사이에 입력이 빠지지 않는다.
@@ -288,12 +295,48 @@ fn run(config: HookConfig, events: Sender<HookEvent>, ready: Sender<Result<u32, 
         let _ = KillTimer(None, reinstall_timer);
         let _ = KillTimer(None, numlock_timer);
         let _ = UnhookWindowsHookEx(hook);
-        if let Some(hwnd) = notify_window {
-            let _ = WTSUnRegisterSessionNotification(hwnd);
-            let _ = DestroyWindow(hwnd);
+    }
+    if let Some((thread_id, join)) = notify_thread {
+        unsafe {
+            let _ = PostThreadMessageW(thread_id, WM_QUIT, WPARAM(0), LPARAM(0));
         }
+        let _ = join.join();
     }
     STATE.with(|s| s.borrow_mut().take());
+}
+
+/// 알림 창을 띄울 스레드. 알림을 받으면 훅 스레드에 [`WM_REINSTALL`]을 보낸다.
+/// 실패해도 주기적 재설치는 돈다.
+fn start_notify_thread(hook_thread: u32) -> Option<(u32, JoinHandle<()>)> {
+    let (tx, rx) = mpsc::channel();
+    let join = thread::Builder::new()
+        .name("deck-hook-notify".into())
+        .spawn(move || {
+            HOOK_THREAD.with(|t| t.set(hook_thread));
+            let mut msg = MSG::default();
+            unsafe {
+                let _ = PeekMessageW(&mut msg, None, WM_USER, WM_USER, PM_NOREMOVE);
+            }
+            let window = create_notify_window();
+            let _ = tx.send(unsafe { GetCurrentThreadId() });
+            unsafe {
+                while GetMessageW(&mut msg, None, 0, 0).0 > 0 {
+                    DispatchMessageW(&msg);
+                }
+                if let Some(hwnd) = window {
+                    let _ = WTSUnRegisterSessionNotification(hwnd);
+                    let _ = DestroyWindow(hwnd);
+                }
+            }
+        })
+        .ok()?;
+    let thread_id = rx.recv().ok()?;
+    Some((thread_id, join))
+}
+
+thread_local! {
+    /// 알림 스레드에서: 알림을 전달할 훅 스레드
+    static HOOK_THREAD: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
 /// NumLock 상태가 바뀌었으면 알린다.
@@ -360,7 +403,7 @@ unsafe extern "system" fn notify_proc(
     if let Some(request) = request {
         unsafe {
             let _ = PostThreadMessageW(
-                GetCurrentThreadId(),
+                HOOK_THREAD.with(|t| t.get()),
                 WM_REINSTALL,
                 WPARAM(request),
                 LPARAM(0),
@@ -409,7 +452,8 @@ fn handle(info: &KBDLLHOOKSTRUCT, down: bool) -> bool {
         };
 
         // 녹화 모드: 덱 판정을 건너뛰고 모든 키를 막아 녹화로 보낸다.
-        if !injected {
+        // 시험용(NPDK_RECORD_INJECTED=1)이면 다른 프로그램이 주입한 키도 받는다.
+        if !injected || (!ours && record_injected_for_test()) {
             let until = RECORD_UNTIL.load(Ordering::Relaxed);
             if until != 0 {
                 let now = now_ms();

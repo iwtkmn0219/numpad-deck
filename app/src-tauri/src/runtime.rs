@@ -210,6 +210,7 @@ impl Runtime {
         let (hook_tx, hook_rx) = mpsc::channel();
         let hook =
             Arc::new(hook::start(HookConfig::default(), hook_tx).map_err(|e| e.to_string())?);
+        start_diag();
         {
             let state = Arc::clone(&state);
             let ui = Arc::clone(&ui);
@@ -347,12 +348,49 @@ fn dispatch_loop(
     hook: &HookHandle,
 ) {
     for event in events {
+        if diag() {
+            eprintln!("[진단] 디스패처 받음: {event:?}");
+        }
         let effects = {
             let mut s = state.lock().unwrap();
             on_hook_event(&mut s, event, executor, hook)
         };
         apply(ui, effects);
+        DISPATCHED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
+}
+
+/// 진단 모드 (환경 변수 NPDK_DIAG). 켜면 1초마다 훅·디스패처 상태를 콘솔에 찍는다.
+fn diag() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("NPDK_DIAG").is_some())
+}
+
+static DISPATCHED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static APPLYING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// 진단 스레드: 훅이 받은 키 수, 디스패처가 처리한 수, 화면 갱신 중인지.
+pub fn start_diag() {
+    if !diag() {
+        return;
+    }
+    spawn_named("deck-diag", || {
+        use std::sync::atomic::Ordering::Relaxed;
+        let mut last = (0, 0);
+        loop {
+            thread::sleep(std::time::Duration::from_secs(1));
+            let now = (hook::hook_calls(), DISPATCHED.load(Relaxed));
+            if now != last || APPLYING.load(Relaxed) {
+                eprintln!(
+                    "[진단] 훅 호출 {} · 디스패처 처리 {} · 화면 갱신 중 {}",
+                    now.0,
+                    now.1,
+                    APPLYING.load(Relaxed)
+                );
+                last = now;
+            }
+        }
+    });
 }
 
 fn on_hook_event(
@@ -446,6 +484,12 @@ fn exec_loop(events: Receiver<ExecEvent>, state: &Mutex<State>, ui: &Mutex<Ui>) 
 }
 
 fn apply(ui: &Mutex<Ui>, effects: Effects) {
+    APPLYING.store(true, std::sync::atomic::Ordering::Relaxed);
+    apply_inner(ui, effects);
+    APPLYING.store(false, std::sync::atomic::Ordering::Relaxed);
+}
+
+fn apply_inner(ui: &Mutex<Ui>, effects: Effects) {
     let (tray, osd, app) = {
         let ui = ui.lock().unwrap();
         (ui.tray.clone(), ui.osd.clone(), ui.app.clone())

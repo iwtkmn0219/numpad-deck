@@ -105,6 +105,14 @@ impl Default for HookConfig {
     }
 }
 
+/// 진단용: 훅 콜백이 불린 횟수. 콜백 안에서는 출력하지 않고 세기만 한다.
+static HOOK_CALLS: AtomicU64 = AtomicU64::new(0);
+
+/// 진단용: 훅 콜백이 지금까지 불린 횟수.
+pub fn hook_calls() -> u64 {
+    HOOK_CALLS.load(Ordering::Relaxed)
+}
+
 /// 일시정지. 훅 스레드가 하나뿐이라 전역으로 둔다.
 static PAUSED: AtomicBool = AtomicBool::new(false);
 
@@ -421,6 +429,7 @@ fn install() -> windows::core::Result<HHOOK> {
 }
 
 unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    HOOK_CALLS.fetch_add(1, Ordering::Relaxed);
     if code == HC_ACTION as i32 {
         let info = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
         let down = matches!(wparam.0 as u32, WM_KEYDOWN | WM_SYSKEYDOWN);

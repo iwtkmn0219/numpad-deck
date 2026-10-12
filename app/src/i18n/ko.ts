@@ -37,6 +37,16 @@ export const ko = {
       saving: "저장 중…",
       failed: (reason: string) => `저장하지 못했어요: ${reason}`,
     },
+    icon: {
+      label: "아이콘",
+      change: "아이콘 바꾸기",
+      auto: "자동으로",
+      autoHint: "동작에 맞는 아이콘",
+      pickTitle: "아이콘 고르기",
+      search: "검색 (예: 음악, 마이크, camera)",
+      suggested: "자주 쓰는 아이콘",
+      empty: "찾는 아이콘이 없어요. 다른 낱말로 찾아보세요.",
+    },
     undo: "되돌리기",
     redo: "다시 실행",
     grid: {

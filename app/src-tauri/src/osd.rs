@@ -51,7 +51,8 @@ pub struct Payload {
     pub page: usize,
     pub page_count: usize,
     pub page_name: String,
-    pub buttons: BTreeMap<String, String>,
+    /// 키캡 글자 → 버튼 (아이콘을 고르지 않았으면 화면이 동작에 맞는 아이콘을 쓴다)
+    pub buttons: BTreeMap<String, deck_core::config::Button>,
     pub highlight: Option<String>,
     pub error: Option<String>,
 }

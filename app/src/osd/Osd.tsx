@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { SLOTS, type Slot } from "@/shared/layout";
+import { buttonIcon, Icon } from "@/shared/icons";
 import { useT, type Dict } from "@/i18n";
 import type { OsdPayload } from "./types";
 
@@ -110,7 +111,8 @@ function Cell({
     );
   }
 
-  const label = payload.buttons[slot.key];
+  const button = payload.buttons[slot.key];
+  const label = button?.label;
   const tone = failed
     ? "bg-red-500 text-white"
     : lit
@@ -121,8 +123,11 @@ function Cell({
 
   return (
     <div style={{ gridArea: slot.area }} className={`${base} ${tone}`}>
-      <span className={`text-[10px] leading-none ${lit ? "text-white/70" : "text-neutral-500"}`}>
-        {slot.key}
+      <span className="flex w-full items-start justify-between">
+        <span className={`text-[10px] leading-none ${lit ? "text-white/70" : "text-neutral-500"}`}>
+          {slot.key}
+        </span>
+        {button && <Icon name={buttonIcon(button)} className="size-4 opacity-90" />}
       </span>
       <span className="mt-auto line-clamp-2 w-full text-[12.5px] leading-tight font-medium break-keep [overflow-wrap:anywhere]">
         {label ?? ""}

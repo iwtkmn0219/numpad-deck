@@ -12,6 +12,8 @@ import { testAction } from "./api";
 import { ActionForm } from "./actions/ActionForm";
 import { ActionPicker } from "./actions/ActionPicker";
 import { emptyAction, incompleteReason, KIND_ICONS, suggestLabel } from "./actions/meta";
+import { IconPickerDialog } from "./IconPickerDialog";
+import { buttonIcon, Icon } from "@/shared/icons";
 import type { Selection } from "./KeyGrid";
 
 interface Props {
@@ -65,6 +67,7 @@ function ButtonEditor({ stored, page, buttonKey, update }: EditorProps) {
   const p = t.editor.panel;
   const [draft, setDraft] = useState<DeckButton | null>(stored);
   const [picking, setPicking] = useState(stored === null);
+  const [iconOpen, setIconOpen] = useState(false);
   /** 사용자가 이름을 직접 고쳤는지. 안 고쳤으면 동작에 맞춰 이름을 지어 준다. */
   const labelTouched = useRef(stored !== null && stored.label !== suggestLabel(stored.action, t));
   /** 마지막으로 저장한 버튼. 되돌리기 등으로 저장된 값이 바뀌면 화면을 맞춘다. */
@@ -133,6 +136,42 @@ function ButtonEditor({ stored, page, buttonKey, update }: EditorProps) {
                 onChange={(e) => {
                   labelTouched.current = true;
                   commit({ ...draft, label: e.currentTarget.value }, `label:${page}:${buttonKey}`);
+                }}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>{t.editor.icon.label}</Label>
+              <div className="flex items-center gap-2">
+                <span className="flex size-10 items-center justify-center rounded-lg border bg-muted/40">
+                  <Icon name={buttonIcon(draft)} className="size-5" />
+                </span>
+                <Button variant="outline" size="sm" onClick={() => setIconOpen(true)}>
+                  {t.editor.icon.change}
+                </Button>
+                {draft.icon ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    title={t.editor.icon.autoHint}
+                    onClick={() => {
+                      const { icon: _, ...rest } = draft;
+                      commit(rest);
+                    }}
+                  >
+                    {t.editor.icon.auto}
+                  </Button>
+                ) : (
+                  <span className="text-xs text-muted-foreground">{t.editor.icon.autoHint}</span>
+                )}
+              </div>
+              <IconPickerDialog
+                open={iconOpen}
+                onOpenChange={setIconOpen}
+                current={buttonIcon(draft)}
+                onPick={(name) => {
+                  setIconOpen(false);
+                  commit({ ...draft, icon: name });
                 }}
               />
             </div>

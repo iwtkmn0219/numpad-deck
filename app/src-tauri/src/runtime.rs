@@ -73,7 +73,7 @@ impl State {
                 .map(|p| {
                     p.buttons
                         .iter()
-                        .map(|(k, b)| (k.key().label().to_string(), b.label.clone()))
+                        .map(|(k, b)| (k.key().label().to_string(), b.clone()))
                         .collect()
                 })
                 .unwrap_or_default(),

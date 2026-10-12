@@ -1,5 +1,7 @@
 // Rust `app/src-tauri/src/osd.rs`의 `OsdPayload`와 같은 모양이어야 한다.
 
+import type { Button } from "@/bindings/Button";
+
 export type Mode = "deck" | "numbers" | "paused";
 
 export interface OsdPayload {
@@ -10,8 +12,8 @@ export interface OsdPayload {
   page: number;
   pageCount: number;
   pageName: string;
-  /** 키캡 글자("7", "+", "Enter" …) → 버튼 이름. 빈 자리는 없다. */
-  buttons: Record<string, string>;
+  /** 키캡 글자("7", "+", "Enter" …) → 버튼. 빈 자리는 없다. */
+  buttons: Partial<Record<string, Button>>;
   /** 방금 누른 키캡 글자 */
   highlight: string | null;
   /** 방금 누른 버튼이 실패했으면 이유 */

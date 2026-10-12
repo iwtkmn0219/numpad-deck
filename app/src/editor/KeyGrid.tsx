@@ -2,6 +2,7 @@ import type { ButtonKeyName } from "@/bindings/ButtonKeyName";
 import type { Page } from "@/bindings/Page";
 import { SLOTS, type SystemKey } from "@/shared/layout";
 import { cn } from "@/lib/utils";
+import { buttonIcon, Icon } from "@/shared/icons";
 import { useT } from "@/i18n";
 
 export type Selection = { kind: "button"; key: ButtonKeyName } | { kind: "system"; key: SystemKey };
@@ -64,7 +65,10 @@ export function KeyGrid({ page, selected, onSelect }: Props) {
               isSelected && "border-blue-500 ring-2 ring-blue-500/40",
             )}
           >
-            <span className="text-[11px] text-muted-foreground">{slot.key}</span>
+            <span className="flex w-full items-start justify-between">
+              <span className="text-[11px] text-muted-foreground">{slot.key}</span>
+              {button && <Icon name={buttonIcon(button)} className="size-5 text-foreground/80" />}
+            </span>
             <span className="mt-auto line-clamp-2 w-full text-sm font-medium break-keep [overflow-wrap:anywhere]">
               {button ? button.label : t.editor.grid.empty}
             </span>

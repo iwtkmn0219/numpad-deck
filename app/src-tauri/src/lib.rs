@@ -6,6 +6,7 @@
 mod editor;
 mod osd;
 mod runtime;
+mod theme;
 mod tray;
 mod update;
 
@@ -309,6 +310,15 @@ pub fn run() {
             // 첫 실행(온보딩)이거나 사용자가 직접 실행했으면 편집기를 연다. 로그인 때 자동
             // 실행이면 조용히 트레이에만 둔다. 직접 실행했는데 창이 안 뜨면 켜졌는지 알 수 없다.
             update::start(app.handle());
+            // 작업 표시줄이 밝게/어둡게 바뀌거나 배율이 바뀌면 트레이 아이콘을 다시 그린다
+            {
+                let app = app.handle().clone();
+                theme::watch(move || {
+                    if let Some(tray) = app.state::<Arc<Runtime>>().tray() {
+                        tray.refresh_icon();
+                    }
+                });
+            }
             let autostarted = std::env::args().any(|a| a == AUTOSTART_ARG);
             if first_run || !autostarted {
                 editor::open(app.handle());

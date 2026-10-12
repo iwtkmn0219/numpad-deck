@@ -66,6 +66,8 @@ pub struct Tray {
     /// 업데이트 확인/설치. 글자는 상태에 따라 바뀐다.
     update: MenuItem<Wry>,
     update_status: std::sync::Arc<std::sync::Mutex<crate::update::Status>>,
+    /// 마지막 모드 (작업 표시줄 밝기·배율이 바뀌면 같은 모드로 다시 그린다)
+    mode: std::sync::Arc<std::sync::Mutex<Mode>>,
     quit: MenuItem<Wry>,
 }
 
@@ -150,6 +152,7 @@ impl Tray {
                 crate::update::Status::Unavailable
             })),
             quit,
+            mode: std::sync::Arc::new(std::sync::Mutex::new(view.mode)),
         };
         tray.update(view);
         Ok(tray)
@@ -158,6 +161,12 @@ impl Tray {
     /// Windows 시작 시 실행 체크를 실제 상태에 맞춘다 (메뉴를 누르면 체크가 먼저 바뀌므로).
     pub fn set_autostart(&self, on: bool) {
         let _ = self.autostart.set_checked(on);
+    }
+
+    /// 아이콘만 다시 그린다 (작업 표시줄 밝기·배율이 바뀌었을 때).
+    pub fn refresh_icon(&self) {
+        let mode = *self.mode.lock().unwrap();
+        let _ = self.icon.set_icon(Some(icon(mode)));
     }
 
     /// 업데이트 메뉴를 상태에 맞춘다.
@@ -206,6 +215,7 @@ impl Tray {
         self.render_update();
         let _ = self.quit.set_text(tr("종료", "Quit"));
         let status = format!("{mode} · {}", view.page);
+        *self.mode.lock().unwrap() = view.mode;
         let _ = self.icon.set_icon(Some(icon(view.mode)));
         let _ = self
             .icon
@@ -227,8 +237,6 @@ impl Tray {
         }
     }
 }
-
-const SIZE: u32 = 32;
 
 /// 오른쪽 클릭 메뉴를 작업 영역 안에 띄운다. 메인 스레드에서 불린다(트레이 이벤트).
 fn show_menu(tray: &TrayIcon, menu: &Menu<Wry>) {
@@ -272,41 +280,108 @@ fn show_menu(tray: &TrayIcon, menu: &Menu<Wry>) {
     }
 }
 
-/// 32×32 RGBA 아이콘을 그린다.
+/// 지금 작업 표시줄 배율·밝기에 맞춘 트레이 아이콘.
 pub fn icon(mode: Mode) -> Image<'static> {
-    let mut rgba = vec![0u8; (SIZE * SIZE * 4) as usize];
-    let blue = [0x3B, 0x82, 0xF6, 0xFF];
-    let gray = [0x9C, 0xA3, 0xAF, 0xFF];
-    let dim = [0x6B, 0x72, 0x80, 0xFF];
-    // 칸 8px, 간격 3px, 여백 2px: 2 + 8 + 3 + 8 + 3 + 8 = 32
+    draw(
+        mode,
+        crate::theme::tray_icon_size(),
+        crate::theme::taskbar_is_light(),
+    )
+}
+
+/// 크기별 그림 (Windows가 줄이면 칸 사이가 번지므로 그 크기로 직접 그린다):
+/// (기준 크기, 시작 여백, 칸, 간격, 칸 네 귀퉁이 1px 비움, 숫자 모드 테두리 두께)
+const SPECS: [(u32, u32, u32, u32, bool, u32); 4] = [
+    (16, 0, 4, 2, false, 1),
+    (20, 1, 4, 3, false, 1),
+    (24, 1, 6, 2, true, 1),
+    (32, 2, 8, 3, true, 2),
+];
+
+/// 3×3 칸: 덱 모드 = 아홉 칸 채움, 숫자 모드 = 테두리만, 일시정지 = 가운데 줄 빔. 바탕 투명.
+/// 색은 작업 표시줄 밝기에 맞춘다 (밝은 작업 표시줄에서 회색이 묻히지 않게).
+fn draw(mode: Mode, size: u32, light: bool) -> Image<'static> {
+    // 표에 없는 크기는 바로 아래 크기 그림을 가운데에 놓는다
+    let &(base, margin, cell, gap, cut, thick) = SPECS
+        .iter()
+        .rev()
+        .find(|s| s.0 <= size)
+        .unwrap_or(&SPECS[0]);
+    let size = size.max(base);
+    let offset = (size - base) / 2;
+    let color: [u8; 4] = match (mode, light) {
+        (Mode::Deck, true) => [0x25, 0x63, 0xEB, 0xFF],
+        (Mode::Deck, false) => [0x3B, 0x82, 0xF6, 0xFF],
+        (Mode::Numbers, true) => [0x67, 0x62, 0x5B, 0xFF],
+        (Mode::Numbers, false) => [0xA8, 0xA2, 0x9A, 0xFF],
+        (Mode::Paused, true) => [0xA3, 0x9D, 0x94, 0xFF],
+        (Mode::Paused, false) => [0x6B, 0x66, 0x5F, 0xFF],
+    };
+    let mut rgba = vec![0u8; (size * size * 4) as usize];
     for row in 0..3 {
         for col in 0..3 {
-            let x0 = 2 + col * 11;
-            let y0 = 2 + row * 11;
-            for y in y0..y0 + 8 {
-                for x in x0..x0 + 8 {
-                    let edge = x == x0 || x == x0 + 7 || y == y0 || y == y0 + 7;
-                    // 모서리 한 픽셀은 비워 둥글게 보이게 한다.
-                    let corner = (x == x0 || x == x0 + 7) && (y == y0 || y == y0 + 7);
-                    if corner {
+            let x0 = offset + margin + col * (cell + gap);
+            let y0 = offset + margin + row * (cell + gap);
+            let x1 = x0 + cell - 1;
+            let y1 = y0 + cell - 1;
+            for y in y0..=y1 {
+                for x in x0..=x1 {
+                    // 귀퉁이 한 픽셀을 비워 둥글게 보이게 한다 (24px 이상)
+                    if cut && (x == x0 || x == x1) && (y == y0 || y == y1) {
                         continue;
                     }
-                    let color = match mode {
-                        Mode::Deck => Some(blue),
+                    let fill = match mode {
+                        Mode::Deck => true,
                         Mode::Numbers => {
-                            // 테두리 2px
-                            let thick = x <= x0 + 1 || x >= x0 + 6 || y <= y0 + 1 || y >= y0 + 6;
-                            (edge || thick).then_some(gray)
+                            x < x0 + thick || x > x1 - thick || y < y0 + thick || y > y1 - thick
                         }
-                        Mode::Paused => (row != 1).then_some(dim),
+                        Mode::Paused => row != 1,
                     };
-                    if let Some(c) = color {
-                        let i = ((y * SIZE + x) * 4) as usize;
-                        rgba[i..i + 4].copy_from_slice(&c);
+                    if fill && x < size && y < size {
+                        let i = ((y * size + x) * 4) as usize;
+                        rgba[i..i + 4].copy_from_slice(&color);
                     }
                 }
             }
         }
     }
-    Image::new_owned(rgba, SIZE, SIZE)
+    Image::new_owned(rgba, size, size)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pixel(img: &Image<'_>, x: u32, y: u32) -> [u8; 4] {
+        let i = ((y * img.width() + x) * 4) as usize;
+        img.rgba()[i..i + 4].try_into().unwrap()
+    }
+
+    #[test]
+    fn draws_at_each_tray_size_without_scaling() {
+        for size in [16, 20, 24, 28, 32, 40] {
+            let img = draw(Mode::Deck, size, false);
+            assert_eq!((img.width(), img.height()), (size, size), "{size}");
+        }
+        // 16px: 칸 4px, 간격 2px, 여백 0 → (0,0)은 채움, (4,0)은 간격(투명)
+        let img = draw(Mode::Deck, 16, true);
+        assert_eq!(pixel(&img, 0, 0), [0x25, 0x63, 0xEB, 0xFF]);
+        assert_eq!(pixel(&img, 4, 0)[3], 0);
+        // 24px: 귀퉁이 1px 비움
+        let img = draw(Mode::Deck, 24, false);
+        assert_eq!(pixel(&img, 1, 1)[3], 0);
+        assert_eq!(pixel(&img, 2, 1)[3], 0xFF);
+    }
+
+    #[test]
+    fn numbers_mode_is_outline_and_paused_skips_middle_row() {
+        // 32px 숫자 모드: 칸(2..10) 테두리 2px, 가운데는 비움
+        let img = draw(Mode::Numbers, 32, false);
+        assert_eq!(pixel(&img, 3, 5)[3], 0xFF);
+        assert_eq!(pixel(&img, 5, 5)[3], 0);
+        // 일시정지: 가운데 줄(y 13..21) 빔
+        let img = draw(Mode::Paused, 32, false);
+        assert_eq!(pixel(&img, 5, 16)[3], 0);
+        assert_eq!(pixel(&img, 5, 5)[3], 0xFF);
+    }
 }

@@ -75,10 +75,11 @@ export function Osd({ payload }: { payload: OsdPayload }) {
           ))}
         </div>
 
-        {ran && (
-          <p className={`mt-2 truncate px-1 text-xs ${MUTED_TEXT}`}>
+        {/* 실행 문구 자리는 덱 모드에서 늘 비워 둔다: `-`로 띄워 둔 채 누를 때 OSD가 늘어나지 않게 */}
+        {active && !error && (
+          <p className={`mt-2 h-4 truncate px-1 text-xs leading-4 ${MUTED_TEXT} ${ran ? "" : "invisible"}`}>
             <span className="mr-1 text-[#60a5fa]">✓</span>
-            {t.osd.ran(ran)}
+            {ran && t.osd.ran(ran)}
           </p>
         )}
         {error && (

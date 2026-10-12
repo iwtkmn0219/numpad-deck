@@ -54,7 +54,9 @@ cargo run --bin deck-probe -- --mics [--mute-test]  # 녹음 장치 목록·기�
 cargo run -p numpad-deck                # 트레이 앱 실행 (OSD 화면은 Vite 개발 서버가 있어야 보임)
 cd app && npm install && npm run tauri dev   # 앱 + OSD 개발 실행
 cd app && npm run build                 # 프런트엔드 타입 검사·빌드
-cd app && npm run tauri build -- --bundles nsis   # 시험용 설치 파일 (target/release/bundle/nsis, 서명 없음)
+cd app && TAURI_SIGNING_PRIVATE_KEY=~/.tauri/numpad-deck.key TAURI_SIGNING_PRIVATE_KEY_PASSWORD= npm run tauri build -- --bundles nsis
+                                        # 설치 파일 + 업데이트 서명(.sig) (target/release/bundle/nsis). 키가 없으면 빌드 실패
+cd app && node scripts/latest-json.mjs "노트"   # 자동 업데이트용 latest.json
 cargo test -p numpad-deck-core gate::   # 테스트 하나만
 ```
 
@@ -132,6 +134,7 @@ NumLock 상태는 캐싱하지 말고 **키 입력마다 다시 조회한다.** 
 
 - **Shift + 넘패드**: NumLock ON + Shift + 넘패드 7이면 Windows가 가짜 Shift 업(`sc=0x22A`, 스캔 코드 0x200 비트, 확장 플래그 없음) → `VK_HOME`(확장 없음) → 넘패드 키 업 → 가짜 Shift 다운(`sc=0x2A`, 진짜와 구분 불가)을 보낸다(M1 실측). 덱 판정은 `GetKeyState(VK_NUMLOCK)`로 정확했다. 단축키 녹화에서는 가짜 Shift 업을 무시해야 한다.
 - **UIPI**: 관리자 권한 창(작업 관리자 등)이 앞에 있으면 일반 권한 훅은 입력을 받지 못하고 넘패드가 평소처럼 동작한다. v1.0은 안내만 한다.
+- **자동 업데이트 / 릴리스 절차**: 앱(`update.rs`)은 `…/releases/latest/download/latest.json`을 확인한다. 릴리스는 ① 버전 올리고 `main` 병합·태그 ② 위 명령으로 서명 빌드 ③ `latest-json.mjs` ④ `gh release create vX.Y.Z <setup.exe> <setup.exe.sig> <latest.json>` — **사전 릴리스로 올리면 안 된다**(latest에서 빠져 업데이트가 안 보임). 업데이트 서명 비밀 키는 `~/.tauri/numpad-deck.key`(저장소 밖, 비밀번호 없음). **잃어버리면 기존 설치에 업데이트를 보낼 수 없다** — 따로 백업. 공개 키는 `tauri.conf.json`.
 - **배포**: Microsoft Store(MSIX, Microsoft 서명) 우선, GitHub(NSIS + updater)·winget 보조. Store 빌드에서는 Tauri updater를 끈다.
 - **OSD 활성화**: Tauri의 창 표시가 창을 활성화할 수 있으므로 `WS_EX_NOACTIVATE` / `SW_SHOWNOACTIVATE`를 직접 지정한다. OSD 창은 하나만 미리 만들어 숨겨 두고, 편집기 창은 닫을 때 파기한다.
 - **키로거 오탐**: SmartScreen 경고와 백신 오탐이 일반 사용자 이탈의 가장 큰 원인이다. 키 입력을 저장하거나 전송하지 않는다는 것이 지켜야 할 제품 약속이다.

@@ -62,7 +62,7 @@ export function IconPickerDialog({ open, onOpenChange, current, onPick }: Props)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{t.pickTitle}</DialogTitle>
         </DialogHeader>

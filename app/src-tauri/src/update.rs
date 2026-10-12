@@ -22,8 +22,10 @@ pub const UPDATE_CHANGED: &str = "update://changed";
 
 /// 앱을 켜고 첫 확인까지 (시작을 늦추지 않게)
 const FIRST_CHECK: Duration = Duration::from_secs(15);
-/// 켜 둔 동안 다시 확인하는 주기
-const CHECK_EVERY: Duration = Duration::from_secs(24 * 60 * 60);
+/// 켜 둔 동안 다시 확인하는 주기 (latest.json 하나라 부담이 적다)
+const CHECK_EVERY: Duration = Duration::from_secs(3 * 60 * 60);
+/// 편집기를 열 때 확인하되, 마지막 확인에서 이만큼 지났을 때만
+const RECHECK_AFTER: Duration = Duration::from_secs(10 * 60);
 
 /// 트레이 메뉴와 설정 창에 보이는 상태.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -58,6 +60,8 @@ pub struct Updates {
     status: Mutex<Option<Status>>,
     /// 받을 업데이트 (`Available`일 때)
     pending: Mutex<Option<Update>>,
+    /// 마지막으로 확인을 시작한 때
+    last_check: Mutex<Option<std::time::Instant>>,
 }
 
 impl Updates {
@@ -142,6 +146,7 @@ pub async fn check(app: &AppHandle) -> State {
     if !RELEASE || matches!(updates.status(), Status::Checking | Status::Installing) {
         return updates.state(app);
     }
+    *updates.last_check.lock().unwrap() = Some(std::time::Instant::now());
     set_status(app, Status::Checking);
     let result = match app.updater() {
         Ok(updater) => updater.check().await,
@@ -182,6 +187,32 @@ pub async fn install(app: &AppHandle) -> State {
         );
     }
     updates.state(app)
+}
+
+/// 편집기를 열 때: 마지막 확인에서 10분이 지났으면 다시 확인한다 (앱을 켜 둔 채 새 버전이
+/// 나와도 사용자가 앱을 볼 때 알 수 있게). 이미 새 버전을 찾았으면 다시 묻지 않는다.
+pub fn check_if_stale(app: &AppHandle) {
+    if !RELEASE {
+        return;
+    }
+    let updates = app.state::<Updates>();
+    if matches!(
+        updates.status(),
+        Status::Available { .. } | Status::Checking | Status::Installing
+    ) {
+        return;
+    }
+    let stale = updates
+        .last_check
+        .lock()
+        .unwrap()
+        .is_none_or(|t| t.elapsed() >= RECHECK_AFTER);
+    if stale {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            check(&app).await;
+        });
+    }
 }
 
 /// 트레이 메뉴: 새 버전이 있으면 설치, 없으면 지금 확인.

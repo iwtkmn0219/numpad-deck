@@ -22,6 +22,8 @@ pub fn retitle(app: &AppHandle) {
 }
 
 pub fn open(app: &AppHandle) {
+    // 사용자가 앱을 보는 때라 새 버전도 확인해 둔다 (10분에 한 번까지)
+    crate::update::check_if_stale(app);
     if let Some(window) = app.get_webview_window(LABEL) {
         let _ = window.unminimize();
         let _ = window.show();

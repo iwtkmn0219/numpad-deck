@@ -17,9 +17,6 @@ export const ko = {
     ran: (label: string) => `${label} 실행`,
     update: (v: string) => `업데이트 ${v} 준비됨 · 트레이 메뉴에서 설치`,
   },
-  micBadge: {
-    muted: "마이크 꺼짐",
-  },
   onboarding: {
     step: (n: number, total: number) => `${n} / ${total}`,
     language: {
@@ -94,7 +91,7 @@ export const ko = {
       autostartDev: "개발판에서는 바꿀 수 없어요 (설치한 앱에서 바꿔 주세요).",
       micTitle: "마이크",
       micIndicator: "마이크가 꺼져 있으면 화면 위에 표시",
-      micIndicatorHint: "회의 중에도 꺼져 있는지 바로 알 수 있어요. 트레이 아이콘에도 빨간 점이 찍혀요.",
+      micIndicatorHint: "모든 마이크가 꺼져 있을 때 화면 위에 보여요. 덱의 '마이크 끄기' 버튼은 연결된 마이크를 한 번에 모두 꺼요. 트레이 아이콘에도 빨간 점이 찍혀요.",
       micIndicatorNoButton: "'마이크 끄기' 버튼을 하나 만들면 쓸 수 있어요.",
       updateTitle: "업데이트",
       update: {

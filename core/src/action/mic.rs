@@ -17,9 +17,20 @@ use windows::Win32::Media::Audio::{
 };
 use windows::Win32::System::Com::{CoCreateInstance, CoTaskMemFree, CLSCTX_ALL, STGM_READ};
 
-/// 장치마다 음소거 상태를 합친다: 장치가 없으면 `None`, 모두 음소거여야 `Some(true)`.
-fn combined(states: &[bool]) -> Option<bool> {
-    (!states.is_empty()).then(|| states.iter().all(|&m| m))
+/// 장치마다 음소거 상태를 (꺼진 수, 전체 수)로 센다. 장치가 없으면 `None`.
+fn summarize(states: &[bool]) -> Option<(usize, usize)> {
+    (!states.is_empty()).then(|| (states.iter().filter(|&&m| m).count(), states.len()))
+}
+
+/// 요약에서 "꺼짐"을 판정한다: 모두 음소거여야 `Some(true)`, 장치가 없으면 `None`.
+pub fn all_muted_of(summary: Option<(usize, usize)>) -> Option<bool> {
+    summary.map(|(muted, total)| muted == total)
+}
+
+/// 일부만 꺼졌으면 (꺼진 수, 전체 수). 모두 꺼졌거나 모두 켜졌거나 장치가 없으면 `None`.
+/// 배지는 띄우지 않고 트레이 메뉴에만 알린다 (Windows 설정은 장치를 하나씩만 끈다).
+pub fn partial_of(summary: Option<(usize, usize)>) -> Option<(usize, usize)> {
+    summary.filter(|&(muted, total)| muted > 0 && muted < total)
 }
 
 /// 연결된 모든 녹음 장치의 음소거 제어. 호출 스레드에 COM이 초기화되어 있어야 한다.
@@ -44,12 +55,18 @@ unsafe fn capture_volumes() -> Result<Vec<IAudioEndpointVolume>, String> {
 /// 켜져 있으면 켜짐. 장치가 없거나 상태를 읽지 못하면 `None`. 호출 스레드에 COM이
 /// 초기화되어 있어야 한다.
 pub fn all_muted() -> Result<Option<bool>, String> {
+    mute_summary().map(all_muted_of)
+}
+
+/// 연결된 녹음 장치 중 (꺼진 수, 전체 수). 상태를 읽지 못한 장치는 세지 않는다. 장치가
+/// 없으면 `None`. 호출 스레드에 COM이 초기화되어 있어야 한다.
+pub fn mute_summary() -> Result<Option<(usize, usize)>, String> {
     unsafe {
         let states: Vec<bool> = capture_volumes()?
             .iter()
             .filter_map(|v| v.GetMute().ok().map(|m| m.as_bool()))
             .collect();
-        Ok(combined(&states))
+        Ok(summarize(&states))
     }
 }
 
@@ -193,16 +210,29 @@ unsafe fn endpoint_volume(device: &IMMDevice) -> Result<IAudioEndpointVolume, St
 
 #[cfg(test)]
 mod tests {
-    use super::combined;
+    use super::{all_muted_of, partial_of, summarize};
 
     #[test]
     fn combined_mute_state() {
+        let all = |s: &[bool]| all_muted_of(summarize(s));
         // 장치 없음 → 모름
-        assert_eq!(combined(&[]), None);
+        assert_eq!(all(&[]), None);
         // 모두 음소거여야 음소거
-        assert_eq!(combined(&[true, true]), Some(true));
+        assert_eq!(all(&[true, true]), Some(true));
         // 하나라도 켜져 있으면 켜짐 (toggle_mute와 같은 기준)
-        assert_eq!(combined(&[true, false]), Some(false));
-        assert_eq!(combined(&[false]), Some(false));
+        assert_eq!(all(&[true, false]), Some(false));
+        assert_eq!(all(&[false]), Some(false));
+    }
+
+    #[test]
+    fn partial_mute_only_when_some_but_not_all() {
+        let partial = |s: &[bool]| partial_of(summarize(s));
+        assert_eq!(summarize(&[true, false, false, false]), Some((1, 4)));
+        assert_eq!(partial(&[true, false, false, false]), Some((1, 4)));
+        assert_eq!(partial(&[true, true, true, false]), Some((3, 4)));
+        // 모두 꺼짐(배지가 맡음)·모두 켜짐·장치 없음은 일부가 아니다
+        assert_eq!(partial(&[true, true]), None);
+        assert_eq!(partial(&[false, false]), None);
+        assert_eq!(partial(&[]), None);
     }
 }

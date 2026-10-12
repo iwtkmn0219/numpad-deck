@@ -145,18 +145,61 @@ fn autostart_enabled(app: &AppHandle) -> bool {
     app.autolaunch().is_enabled().unwrap_or(false)
 }
 
-/// 트레이 메뉴: Windows 시작 시 실행 켜기/끄기.
-fn toggle_autostart(app: &AppHandle, runtime: &Runtime) {
+/// 사용자가 Windows 시작 시 실행을 직접 껐다는 표시 파일 (설정 폴더). 이 PC에만 해당하는
+/// 선택이라 공유·백업되는 설정 파일이 아니라 따로 둔다.
+fn autostart_off_marker(runtime: &Runtime) -> Option<std::path::PathBuf> {
+    runtime
+        .config_path()
+        .parent()
+        .map(|dir| dir.join("autostart-off"))
+}
+
+/// 기본은 켜짐: 사용자가 직접 끈 적이 없으면 켠다 (릴리스 빌드만 — 개발용 실행 파일이
+/// 로그인 때 뜨면 안 된다).
+fn apply_default_autostart(app: &AppHandle, runtime: &Runtime) {
+    if cfg!(debug_assertions) || autostart_enabled(app) {
+        return;
+    }
+    if autostart_off_marker(runtime).is_some_and(|m| m.exists()) {
+        return;
+    }
+    if let Err(e) = app.autolaunch().enable() {
+        eprintln!("Windows 시작 시 실행을 켤 수 없습니다: {e}");
+    }
+}
+
+/// Windows 시작 시 실행을 켜거나 끈다 (설정 창, 트레이 메뉴). 끄면 다음 실행 때 다시 켜지
+/// 않도록 표시를 남긴다. 실제 상태를 돌려준다.
+fn set_autostart_state(app: &AppHandle, runtime: &Runtime, on: bool) -> bool {
     let manager = app.autolaunch();
-    let result = if autostart_enabled(app) {
-        manager.disable()
-    } else {
+    let result = if on {
         manager.enable()
+    } else {
+        manager.disable()
     };
     if let Err(e) = result {
         eprintln!("Windows 시작 시 실행을 바꿀 수 없습니다: {e}");
     }
-    runtime.set_autostart_checked(autostart_enabled(app));
+    if let Some(marker) = autostart_off_marker(runtime) {
+        let _ = if on {
+            std::fs::remove_file(&marker)
+        } else {
+            std::fs::write(&marker, b"")
+        };
+    }
+    let now = autostart_enabled(app);
+    runtime.set_autostart_checked(now);
+    now
+}
+
+#[tauri::command]
+fn get_autostart(app: AppHandle) -> bool {
+    autostart_enabled(&app)
+}
+
+#[tauri::command]
+fn set_autostart(app: AppHandle, runtime: State<'_, Arc<Runtime>>, on: bool) -> bool {
+    set_autostart_state(&app, &runtime, on)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -184,19 +227,15 @@ pub fn run() {
             app_info,
             open_config,
             open_config_folder,
+            get_autostart,
+            set_autostart,
             system_lang,
             onboarding_pending,
             finish_onboarding
         ])
         .setup(|app| {
             let runtime = Arc::new(Runtime::start()?);
-            // 첫 실행이면 Windows 시작 시 실행을 켠다 (트레이 메뉴에서 끌 수 있다). 개발 빌드는
-            // 켜지 않는다: 개발용 실행 파일이 로그인 때 뜨면 안 된다.
-            if runtime.onboarding_pending() && !cfg!(debug_assertions) {
-                if let Err(e) = app.autolaunch().enable() {
-                    eprintln!("Windows 시작 시 실행을 켤 수 없습니다: {e}");
-                }
-            }
+            apply_default_autostart(app.handle(), &runtime);
             let tray = Tray::create(
                 app.handle(),
                 &runtime.view(),
@@ -223,7 +262,9 @@ pub fn run() {
                 MENU_PAUSE => runtime.toggle_pause(),
                 MENU_STOP_SOUNDS => runtime.stop_sounds(),
                 MENU_OPEN_CONFIG => runtime.open_config(),
-                MENU_AUTOSTART => toggle_autostart(app, &runtime),
+                MENU_AUTOSTART => {
+                    set_autostart_state(app, &runtime, !autostart_enabled(app));
+                }
                 MENU_QUIT => app.exit(0),
                 _ => {}
             }

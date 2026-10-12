@@ -83,6 +83,9 @@ export const ko = {
     settings: {
       button: "설정",
       title: "설정",
+      startTitle: "시작",
+      autostart: "Windows 시작 시 실행",
+      autostartHint: "켜 두면 PC를 켤 때 Numpad Deck이 트레이에 자동으로 떠요.",
       configTitle: "설정 파일",
       configBody: "버튼·페이지·배치가 모두 이 파일 하나에 저장돼요. 폴더째 복사해 두면 백업이 돼요.",
       openFile: "파일 열기",

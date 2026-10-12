@@ -304,7 +304,7 @@ pub fn run() {
                 .map_err(|e| eprintln!("OSD 창을 만들 수 없습니다: {e}"))
                 .ok()
                 .map(Arc::new);
-            let mic_badge = Arc::new(mic_badge::MicBadge::new(app.handle()));
+            let mic_badge = Arc::new(mic_badge::MicBadge::new());
             runtime.attach_ui(app.handle().clone(), tray, osd, mic_badge);
             // 첫 실행: 편집기를 열어 온보딩을 보여준다.
             let first_run = runtime.onboarding_pending();

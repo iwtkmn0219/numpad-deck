@@ -737,8 +737,13 @@ fn apply_inner(ui: &Mutex<Ui>, effects: Effects) {
             osd.show(payload, how);
         }
     }
-    if let (Some(badge), Some((seq, visible))) = (mic_badge, effects.mic_badge) {
-        badge.set_visible(seq, visible);
+    if let Some(badge) = mic_badge {
+        if let Some(lang) = effects.lang {
+            badge.set_lang(lang);
+        }
+        if let Some((seq, visible)) = effects.mic_badge {
+            badge.set_visible(seq, visible);
+        }
     }
 }
 

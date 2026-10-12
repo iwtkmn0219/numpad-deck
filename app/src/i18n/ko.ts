@@ -17,9 +17,6 @@ export const ko = {
     ran: (label: string) => `${label} 실행`,
     update: (v: string) => `업데이트 ${v} 준비됨 · 트레이 메뉴에서 설치`,
   },
-  micBadge: {
-    muted: "마이크 꺼짐",
-  },
   onboarding: {
     step: (n: number, total: number) => `${n} / ${total}`,
     language: {

@@ -173,7 +173,7 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
         <div className="flex gap-5">
           <div
             ref={canvas}
-            className="relative shrink-0 rounded-lg bg-[radial-gradient(circle,var(--color-border)_1.5px,transparent_1.5px)]"
+            className="relative shrink-0 rounded-xl bg-muted bg-[radial-gradient(circle,var(--color-key-edge)_1.5px,transparent_1.5px)]"
             style={{
               width: LAYOUT_MAX * STEP - GAP,
               height: LAYOUT_MAX * STEP - GAP,

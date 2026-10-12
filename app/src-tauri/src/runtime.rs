@@ -472,11 +472,16 @@ fn on_hook_event(s: &mut State, event: HookEvent, executor: &Executor) -> Effect
             match deck.on_press(key, config) {
                 Dispatch::Button { button, .. } => {
                     s.last_button = Some(key);
+                    // 마이크 음소거는 바뀐 상태를 받은 뒤(`ExecEvent::MicMuted`) 띄운다. 지금 띄우면
+                    // 바뀌기 전 상태 색이 잠깐 보인다. 실패하면 실패 알림이 띄운다.
+                    let wait_for_mic =
+                        matches!(&button, Some(b) if matches!(b.action, Action::MicMute));
                     if let Some(button) = button {
                         executor.submit(button.label, button.action);
                     }
                     Effects {
-                        osd: Some((s.payload(Some(key), None), Show::For(osd::BUTTON))),
+                        osd: (!wait_for_mic)
+                            .then(|| (s.payload(Some(key), None), Show::For(osd::BUTTON))),
                         ..Effects::default()
                     }
                 }

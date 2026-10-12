@@ -125,15 +125,18 @@ function Cell({
   const label = button?.label;
   // 마이크 음소거 버튼은 지금 상태를 보인다: 켜져 있으면 초록 불, 꺼져 있으면 마이크 꺼짐 아이콘
   const mic = button?.action.type === "micMute" ? payload.micMuted : null;
+  // 마이크 버튼은 누를 때 파란 강조 대신 바뀐 상태 색(켜짐 초록, 꺼짐 빨강)을 테두리와 함께 바로 보인다
   const tone = failed
     ? "bg-red-500 text-white"
-    : lit
-      ? "bg-blue-500 text-white"
-      : mic === false
-        ? "bg-green-600 text-white"
-        : label
-          ? "bg-white/10 text-white"
-          : "border border-dashed border-white/10 text-neutral-600";
+    : lit && mic !== null
+      ? `${mic ? "bg-red-600" : "bg-green-600"} text-white ring-2 ring-white/70`
+      : lit
+        ? "bg-blue-500 text-white"
+        : mic === false
+          ? "bg-green-600 text-white"
+          : label
+            ? "bg-white/10 text-white"
+            : "border border-dashed border-white/10 text-neutral-600";
 
   return (
     <div style={{ gridArea: slot.area }} className={`${base} ${tone}`}>

@@ -4,9 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 현재 상태
 
-**2단계 완료, M2 통과(2026-10-10). 3단계 진행 중(계획 `docs/stage3-plan.md`, 검증 `docs/m3-checklist.md`): 3-1 편집기 뼈대 완료(수동 검증 통과), 3-2 액션 편집 완료(수동 검증 통과), 3-3 아이콘 완료(수동 검증 통과), 3-4 프리셋 완료(수동 검증 통과, OBS는 미확인), 3-5 온보딩 완료(수동 검증 통과), 3-6 한국어·영어 완료(수동 검증 통과, 영어 Windows 첫 실행은 미확인). M3 테스터 시험 준비(안내문 `docs/m3-tester-guide.md`).** 1단계는 M1 통과(2026-10-09). Cargo 워크스페이스에 `core/` 크레이트(`numpad-deck-core`, lib 이름 `deck_core`)와 `app/src-tauri`(Tauri 2 앱 `numpad-deck`)가 있다. 앱은 트레이와 OSD 창 하나로 이뤄진다. 프런트엔드는 Vite 다중 진입점: `osd.html`(OSD), `index.html`(설정 편집기 자리, 3단계). 기획 근거는 `Numpad Deck 프로젝트 제안서.md`, M1 수동 검증 항목과 결과는 `docs/m1-checklist.md`, 2단계 계획(설정 스키마·액션 명세·OSD 동작 결정)은 `docs/stage2-plan.md`, 액션 수동 검증은 `docs/m2-checklist.md`(시험용 설정 `docs/m2-test-config.json`).
-
-개념 검증용 AutoHotkey v2 프로토타입이 `~/Downloads/numpad-deck.ahk`에 있다(저장소 밖). 키 배치·페이지 전환·클릭 통과 OSD의 참고 구현이다.
+**2단계 완료, M2 통과(2026-10-10). 3단계 진행 중(계획 `docs/stage3-plan.md`, 검증 `docs/m3-checklist.md` — 체크리스트는 로컬 전용): 3-1 편집기 뼈대 완료(수동 검증 통과), 3-2 액션 편집 완료(수동 검증 통과), 3-3 아이콘 완료(수동 검증 통과), 3-4 프리셋 완료(수동 검증 통과, OBS는 미확인), 3-5 온보딩 완료(수동 검증 통과), 3-6 한국어·영어 완료(수동 검증 통과, 영어 Windows 첫 실행은 미확인). M3 테스터 시험 준비(안내문 `docs/m3-tester-guide.md`).** 1단계는 M1 통과(2026-10-09). Cargo 워크스페이스에 `core/` 크레이트(`numpad-deck-core`, lib 이름 `deck_core`)와 `app/src-tauri`(Tauri 2 앱 `numpad-deck`)가 있다. 앱은 트레이와 OSD 창 하나로 이뤄진다. 프런트엔드는 Vite 다중 진입점: `osd.html`(OSD), `index.html`(설정 편집기 자리, 3단계). 기획 근거는 `Numpad Deck 프로젝트 제안서.md`, M1 수동 검증 항목과 결과는 `docs/m1-checklist.md`, 2단계 계획(설정 스키마·액션 명세·OSD 동작 결정)은 `docs/stage2-plan.md`, 액션 수동 검증은 `docs/m2-checklist.md`(시험용 설정 `docs/m2-test-config.json`).
 
 `core/` 구성:
 
@@ -37,10 +35,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 작업 방식
 
-- 사용자에게 물어볼 것이 있으면 텍스트로 나열하지 말고 **질의응답 도구(AskUserQuestion)로 한 번에 하나씩** 묻는다. 답을 받은 뒤 다음 질문으로 넘어간다.
 - **브랜치 (2026-10-12부터)**: 기능·수정마다 `develop`에서 `feature/…` 브랜치를 만들어 작업하고, 사용자 확인이 끝나면 `develop`에 병합한다(병합한 기능 브랜치는 지운다). `main`에는 사용자가 **버전을 올리자고 할 때만** `develop`을 병합하고 그 커밋에 `v0.x.0` 태그를 단다. 원격은 `origin` = github.com/iwtkmn0219/numpad-deck (공개 저장소). `develop`에 병합할 때 `develop`을, 버전을 올릴 때 `main`과 태그를 올린다. 기능 브랜치는 로컬에만. 수동 시험 체크리스트(`docs/*-checklist.md`, 개인 시험 기록)는 `.gitignore`로 **로컬에만** 둔다.
-- 커밋 메시지에 `Co-Authored-By` 줄을 넣지 않는다 (사용자 요청으로 기존 커밋에서도 모두 지웠다).
-- 사용자 PC에 클릭·글자 입력을 보내는 UI 자동 시험을 하지 않는다 (창이 앞으로 오지 않아 다른 앱에 입력된 사고가 있었다). 화면 캡처는 괜찮고, 넘패드 키 주입은 F24처럼 무해한 동작에만. 클릭·타이핑이 필요한 확인은 체크리스트로 사용자에게 맡긴다.
 
 ## 빌드·실행 명령
 

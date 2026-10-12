@@ -23,6 +23,9 @@ import {
 import { pauseDeckForwarding } from "./api";
 import { numpadLabel } from "./keymap";
 
+/** 시스템 키 (역할을 맞바꿀 수 있는 네 키) */
+const SYSTEM: string[] = ["/", "*", "-", "."];
+
 /** 칸 한 변(px)과 칸 사이 간격 */
 const CELL = 44;
 const GAP = 4;
@@ -137,7 +140,7 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
   };
 
   const current = places.find((p) => p.key === selected) ?? null;
-  const systemKey = current && ["/", "*", "-", "."].includes(current.key) ? (current.key as SystemKey) : null;
+  const systemKey = current && SYSTEM.includes(current.key) ? (current.key as SystemKey) : null;
 
   /** 고른 시스템 키에 역할을 주고, 그 역할을 갖고 있던 키는 이 키의 역할을 받는다 */
   const assignRole = (key: SystemKey, role: SystemRole) => {
@@ -195,15 +198,21 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
                 onPointerUp={() => onUp(p)}
                 className={cn(
                   "absolute flex touch-none items-center justify-center rounded-lg border text-sm font-medium select-none",
-                  p.key === selected ? "border-blue-500 bg-blue-500 text-white" : "bg-card hover:bg-muted",
+                  p.key === selected
+                    ? "border-blue-500 bg-blue-500 text-white"
+                    : SYSTEM.includes(p.key)
+                      ? "border-amber-500/50 bg-amber-500/15 text-amber-900 hover:bg-amber-500/25 dark:text-amber-200"
+                      : p.key === "NumLock"
+                        ? "border-dashed bg-muted/40 text-muted-foreground hover:bg-muted"
+                        : "bg-card hover:bg-muted",
                   drag?.key === p.key ? "cursor-grabbing opacity-60" : "cursor-grab",
                 )}
                 style={box(p.x, p.y, p)}
               >
                 <span className="flex flex-col items-center leading-tight">
                   {p.key === "NumLock" ? "Num" : p.key}
-                  {["/", "*", "-", "."].includes(p.key) && (
-                    <span className="text-[10px] font-normal opacity-70">
+                  {SYSTEM.includes(p.key) && (
+                    <span className="text-[10px] font-semibold">
                       {dict.system[systemRole(p.key as SystemKey, config.systemKeys)]}
                     </span>
                   )}
@@ -213,6 +222,15 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
           </div>
 
           <div className="min-w-0 flex-1 space-y-3 text-sm">
+            <ul className="space-y-1.5 text-xs text-muted-foreground">
+              <li className="flex items-center gap-2">
+                <span className="size-3.5 shrink-0 rounded border bg-card" /> {t.legendButton}
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="size-3.5 shrink-0 rounded border border-amber-500/50 bg-amber-500/15" />
+                {t.legendSystem}
+              </li>
+            </ul>
             {current ? (
               <>
                 <p className="font-medium">{t.selected(current.key === "NumLock" ? "NumLock" : current.key)}</p>

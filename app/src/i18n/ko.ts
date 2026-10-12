@@ -89,6 +89,8 @@ export const ko = {
       wide: "가로 2칸",
       tall: "세로 2줄",
       blocked: "그 자리에는 다른 키가 있어요. 먼저 그 키를 옮겨 주세요.",
+      legendButton: "버튼 키 — 페이지마다 다른 동작",
+      legendSystem: "시스템 키 — 페이지 넘기기·화면 띄우기. 고르면 할 일을 바꿀 수 있어요",
       role: "이 키가 할 일",
       roleHint: "다른 시스템 키와 역할을 맞바꿔요.",
       reset: "표준 배치로",

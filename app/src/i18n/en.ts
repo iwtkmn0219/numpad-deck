@@ -92,6 +92,8 @@ export const en: Dict = {
       wide: "2 columns wide",
       tall: "2 rows tall",
       blocked: "Another key is in the way. Move that key first.",
+      legendButton: "Button keys — a different action on each page",
+      legendSystem: "System keys — switch pages, show the panel. Select one to change what it does",
       role: "What this key does",
       roleHint: "Swaps roles with another system key.",
       reset: "Standard layout",

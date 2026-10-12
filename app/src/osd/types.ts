@@ -18,6 +18,8 @@ export interface OsdPayload {
   highlight: string | null;
   /** 방금 누른 버튼이 실패했으면 이유 */
   error: string | null;
+  /** 마이크 음소거 버튼으로 마지막에 바꾼 상태 (아직 안 눌렀으면 null) */
+  micMuted: boolean | null;
 }
 
 export const OSD_EVENT = "osd://update";

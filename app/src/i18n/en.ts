@@ -15,6 +15,7 @@ export const en: Dict = {
     numlockOn: "on",
     numlockOff: "off",
     numbersHint: "Turn NumLock off to use the buttons.",
+    mic: { muted: "Mic off", live: "Mic on" },
   },
   onboarding: {
     step: (n: number) => `${n} / 3`,

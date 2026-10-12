@@ -55,6 +55,8 @@ pub struct Payload {
     pub buttons: BTreeMap<String, deck_core::config::Button>,
     pub highlight: Option<String>,
     pub error: Option<String>,
+    /// 마이크 음소거 버튼으로 마지막에 바꾼 상태 (아직 안 눌렀으면 없음)
+    pub mic_muted: Option<bool>,
 }
 
 /// 띄우는 방법.

@@ -11,6 +11,9 @@ export function Osd({ payload }: { payload: OsdPayload }) {
   const t = useT();
   const { mode, error } = payload;
   const active = mode === "deck";
+  // 방금 누른 버튼이 마이크 음소거면 바뀐 상태를 크게 보인다
+  const pressed = payload.highlight ? payload.buttons[payload.highlight] : undefined;
+  const micNotice = pressed?.action.type === "micMute" && !error ? payload.micMuted : null;
   const [highlight, setHighlight] = useState<string | null>(null);
 
   // 새 알림(seq)마다 강조를 켜고 잠시 뒤 끈다. 실패 표시는 다음 알림까지 둔다.
@@ -61,6 +64,16 @@ export function Osd({ payload }: { payload: OsdPayload }) {
           ))}
         </div>
 
+        {micNotice !== null && (
+          <p
+            className={`mt-2 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium ${
+              micNotice ? "bg-red-500/20 text-red-200" : "bg-green-500/15 text-green-200"
+            }`}
+          >
+            <Icon name={micNotice ? "mic-off" : "mic"} className="size-4" />
+            {micNotice ? t.osd.mic.muted : t.osd.mic.live}
+          </p>
+        )}
         {error && (
           <p className="mt-2 rounded-lg bg-red-500/15 px-2.5 py-1.5 text-xs leading-snug text-red-200">
             {error}
@@ -113,6 +126,8 @@ function Cell({
 
   const button = payload.buttons[slot.key];
   const label = button?.label;
+  // 마이크 음소거 버튼은 지금 상태를 아이콘과 점으로 보인다 (한 번이라도 눌렀으면)
+  const mic = button?.action.type === "micMute" ? payload.micMuted : null;
   const tone = failed
     ? "bg-red-500 text-white"
     : lit
@@ -127,7 +142,14 @@ function Cell({
         <span className={`text-[10px] leading-none ${lit ? "text-white/70" : "text-neutral-500"}`}>
           {slot.key}
         </span>
-        {button && <Icon name={buttonIcon(button)} className="size-4 opacity-90" />}
+        {button && mic !== null ? (
+          <span className="flex items-center gap-1" title={mic ? t.osd.mic.muted : t.osd.mic.live}>
+            <span className={`size-2 rounded-full ${mic ? "bg-red-400" : "bg-green-400"}`} />
+            <Icon name={mic ? "mic-off" : "mic"} className="size-4 opacity-90" />
+          </span>
+        ) : (
+          button && <Icon name={buttonIcon(button)} className="size-4 opacity-90" />
+        )}
       </span>
       <span className="mt-auto line-clamp-2 w-full text-[12.5px] leading-tight font-medium break-keep [overflow-wrap:anywhere]">
         {label ?? ""}

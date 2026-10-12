@@ -37,6 +37,8 @@ struct State {
     last_button: Option<NumpadKey>,
     /// 단축키 녹화 중이면 `Some`
     recorder: Option<Recorder>,
+    /// 마이크 음소거 버튼으로 마지막에 바꾼 상태. OSD가 버튼에 켜짐/꺼짐을 보인다.
+    mic_muted: Option<bool>,
 }
 
 impl State {
@@ -81,6 +83,7 @@ impl State {
                 .unwrap_or_default(),
             highlight: highlight.map(|k| k.label().to_string()),
             error,
+            mic_muted: self.mic_muted,
         }
     }
 }
@@ -189,8 +192,26 @@ impl Runtime {
             config_error,
             last_button: None,
             recorder: None,
+            mic_muted: None,
         }));
         let ui: Arc<Mutex<Ui>> = Arc::default();
+
+        // 지금 마이크 상태 (OSD의 마이크 버튼 표시용). 음소거 버튼과 같은 기준: 하나라도
+        // 켜져 있으면 켜짐. COM 장치 목록이라 시작을 늦추지 않게 따로 읽는다.
+        {
+            let state = Arc::clone(&state);
+            spawn_named("deck-mic-state", move || {
+                let mics = deck_core::action::with_com(deck_core::action::mic::list);
+                if let Ok(mics) =
+                    mics.map(|m| m.into_iter().filter_map(|m| m.muted).collect::<Vec<_>>())
+                {
+                    if !mics.is_empty() {
+                        let muted = mics.iter().all(|&m| m);
+                        state.lock().unwrap().mic_muted.get_or_insert(muted);
+                    }
+                }
+            });
+        }
 
         let (exec_tx, exec_rx) = mpsc::channel();
         let executor = Executor::start(exec_tx).map_err(|e| e.to_string())?;
@@ -490,10 +511,20 @@ fn on_hook_event(s: &mut State, event: HookEvent, executor: &Executor) -> Effect
     }
 }
 
-/// 실행 결과: 실패하면 OSD에 이유를 보여준다.
+/// 실행 결과: 실패하면 OSD에 이유를, 마이크를 바꾸면 켜짐/꺼짐을 보여준다.
 fn exec_loop(events: Receiver<ExecEvent>, state: &Mutex<State>, ui: &Mutex<Ui>) {
     for event in events {
-        if let ExecEvent::Failed { label, error } = event {
+        if let ExecEvent::MicMuted(muted) = event {
+            let effects = {
+                let mut s = state.lock().unwrap();
+                s.mic_muted = Some(muted);
+                Effects {
+                    osd: Some((s.payload(s.last_button, None), Show::For(osd::BUTTON))),
+                    ..Effects::default()
+                }
+            };
+            apply(ui, effects);
+        } else if let ExecEvent::Failed { label, error } = event {
             eprintln!("\"{label}\" 실패: {error}");
             let effects = {
                 let s = state.lock().unwrap();

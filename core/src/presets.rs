@@ -117,6 +117,7 @@ pub fn default_config(lang: Lang) -> Config {
         language: None,
         layout: None,
         system_keys: None,
+        mic_indicator: None,
         pages: vec![get(DEFAULT_PRESET, lang).expect("기본 프리셋이 있다").page],
     }
 }
@@ -139,6 +140,7 @@ mod tests {
                     language: None,
                     layout: None,
                     system_keys: None,
+                    mic_indicator: None,
                     pages: vec![p.page.clone()],
                 };
                 // 저장했다 다시 읽어도 통과해야 한다 (검증 포함)

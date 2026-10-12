@@ -93,7 +93,7 @@ export function Editor() {
         </aside>
       </main>
 
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} config={config} update={update} />
       <LayoutEditor open={layoutOpen} onOpenChange={setLayoutOpen} config={config} update={update} />
 
       {onboarding && (

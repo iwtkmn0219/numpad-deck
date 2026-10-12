@@ -18,6 +18,9 @@ export const en: Dict = {
     ran: (label: string) => `Ran ${label}`,
     update: (v: string) => `Update ${v} ready · install from the tray menu`,
   },
+  micBadge: {
+    muted: "Mic muted",
+  },
   onboarding: {
     step: (n: number, total: number) => `${n} / ${total}`,
     language: {
@@ -92,6 +95,10 @@ export const en: Dict = {
       autostart: "Start with Windows",
       autostartHint: "When on, Numpad Deck starts in the tray when you sign in to Windows.",
       autostartDev: "Can't be changed in a development build (change it in the installed app).",
+      micTitle: "Microphone",
+      micIndicator: "Show on screen while the mic is muted",
+      micIndicatorHint: "See at a glance that you're muted, even in a meeting. The tray icon gets a red dot too.",
+      micIndicatorNoButton: "Add a \"Mute mic\" button to use this.",
       updateTitle: "Updates",
       update: {
         idle: "Check whether a new version is available.",

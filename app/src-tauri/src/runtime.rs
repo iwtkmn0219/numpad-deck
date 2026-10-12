@@ -23,6 +23,7 @@ use deck_core::record::{Outcome, Recorder, Rejection};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
+use crate::mic_badge::MicBadge;
 use crate::osd::{self, Osd, Payload, Show};
 use crate::tray::{Mode, Tray, View};
 
@@ -37,8 +38,12 @@ struct State {
     last_button: Option<NumpadKey>,
     /// 단축키 녹화 중이면 `Some`
     recorder: Option<Recorder>,
-    /// 마이크 음소거 버튼으로 마지막에 바꾼 상태. OSD가 버튼에 켜짐/꺼짐을 보인다.
+    /// 마지막으로 안 마이크 상태(버튼으로 바꿨거나 감시 스레드가 읽음). 장치가 없으면 `None`.
     mic_muted: Option<bool>,
+    /// `mic_muted`를 버튼이 바꿀 때마다 늘린다. 감시 스레드가 읽는 사이 바뀐 것을 알아챈다.
+    mic_gen: u64,
+    /// 마지막으로 배지에 보낸 순번
+    badge_seq: u64,
     /// 설치할 수 있는 새 버전. OSD 아래에 한 줄로 알린다 (OSD를 따로 띄우지는 않는다).
     update_available: Option<String>,
 }
@@ -59,7 +64,19 @@ impl State {
             mode: self.mode(),
             page: format!("{}/{} {name}", page + 1, self.config.pages.len()),
             config_error: self.config_error.clone(),
+            mic_muted: self.mic_badge(),
         }
+    }
+
+    /// 마이크 배지·트레이 점을 보여야 하는가.
+    fn mic_badge(&self) -> bool {
+        self.mic_muted == Some(true) && self.config.mic_indicator_active()
+    }
+
+    /// 배지에 보낼 (순번, 보임). 잠금 안에서 만들고, 순번으로 늦게 도착한 값을 거른다.
+    fn badge_effect(&mut self) -> (u64, bool) {
+        self.badge_seq += 1;
+        (self.badge_seq, self.mic_badge())
     }
 
     fn payload(&self, highlight: Option<NumpadKey>, error: Option<String>) -> Payload {
@@ -143,6 +160,9 @@ struct Effects {
     osd_refresh: Option<Payload>,
     /// 언어가 바뀌었다 (창 제목·화면 문자열).
     lang: Option<Lang>,
+    /// 마이크 배지를 보이거나 숨긴다 (바뀌었을 수 있을 때마다 보낸다).
+    /// (순번, 보임). 순번이 더 작은 것은 오래된 값이라 배지가 무시한다.
+    mic_badge: Option<(u64, bool)>,
 }
 
 /// 설정의 언어를 코어에 반영한다. 바뀌었으면 새 언어.
@@ -160,6 +180,7 @@ fn sync_lang(config: &Config) -> Option<Lang> {
 struct Ui {
     tray: Option<Tray>,
     osd: Option<Arc<Osd>>,
+    mic_badge: Option<Arc<MicBadge>>,
     app: Option<AppHandle>,
 }
 
@@ -198,24 +219,51 @@ impl Runtime {
             last_button: None,
             recorder: None,
             mic_muted: None,
+            mic_gen: 0,
+            badge_seq: 0,
             update_available: None,
         }));
         let ui: Arc<Mutex<Ui>> = Arc::default();
 
-        // 지금 마이크 상태 (OSD의 마이크 버튼 표시용). 음소거 버튼과 같은 기준: 하나라도
-        // 켜져 있으면 켜짐. COM 장치 목록이라 시작을 늦추지 않게 따로 읽는다.
+        // 마이크 상태 감시: Windows 설정·다른 앱·장치 연결로 바뀐 것도 상시 표시에 반영한다.
+        // 처음 한 번은 무조건 읽고(OSD 마이크 버튼 표시용), 그 뒤로는 상시 표시가 켜져 있을
+        // 때만 1초마다 읽는다. 장치 조회(COM)는 이 스레드에서만 한다.
         {
             let state = Arc::clone(&state);
-            spawn_named("deck-mic-state", move || {
-                let mics = deck_core::action::with_com(deck_core::action::mic::list);
-                if let Ok(mics) =
-                    mics.map(|m| m.into_iter().filter_map(|m| m.muted).collect::<Vec<_>>())
-                {
-                    if !mics.is_empty() {
-                        let muted = mics.iter().all(|&m| m);
-                        state.lock().unwrap().mic_muted.get_or_insert(muted);
+            let ui = Arc::clone(&ui);
+            spawn_named("deck-mic-watch", move || {
+                deck_core::action::with_com_mta(|| {
+                    let mut first = true;
+                    loop {
+                        let (active, gen) = {
+                            let s = state.lock().unwrap();
+                            (s.config.mic_indicator_active(), s.mic_gen)
+                        };
+                        if first || active {
+                            // 읽지 못하면 이번 차례는 건너뛴다 (직전 상태 유지)
+                            if let Ok(now) = deck_core::action::mic::all_muted() {
+                                let effects = {
+                                    let mut s = state.lock().unwrap();
+                                    // 읽는 사이 버튼이 바꿨으면 이 값은 오래된 것이다
+                                    (s.mic_gen == gen && s.mic_muted != now).then(|| {
+                                        s.mic_muted = now;
+                                        Effects {
+                                            tray: Some(s.view()),
+                                            osd_refresh: Some(s.payload(None, None)),
+                                            mic_badge: Some(s.badge_effect()),
+                                            ..Effects::default()
+                                        }
+                                    })
+                                };
+                                if let Some(effects) = effects {
+                                    apply(&ui, effects);
+                                }
+                            }
+                            first = false;
+                        }
+                        thread::sleep(std::time::Duration::from_secs(1));
                     }
-                }
+                });
             });
         }
 
@@ -253,6 +301,7 @@ impl Runtime {
                         osd_refresh: changed.is_some().then(|| s.payload(None, None)),
                         config_changed: changed,
                         lang,
+                        mic_badge: Some(s.badge_effect()),
                         ..Effects::default()
                     }
                 };
@@ -294,21 +343,29 @@ impl Runtime {
         self.state.lock().unwrap().view()
     }
 
-    pub fn attach_ui(&self, app: AppHandle, tray: Tray, osd: Option<Arc<Osd>>) {
+    pub fn attach_ui(
+        &self,
+        app: AppHandle,
+        tray: Tray,
+        osd: Option<Arc<Osd>>,
+        mic_badge: Arc<MicBadge>,
+    ) {
         {
             let mut ui = self.ui.lock().unwrap();
             ui.tray = Some(tray);
             ui.osd = osd;
+            ui.mic_badge = Some(mic_badge);
             ui.app = Some(app);
         }
-        let view = self.view();
-        apply(
-            &self.ui,
+        let effects = {
+            let mut s = self.state.lock().unwrap();
             Effects {
-                tray: Some(view),
+                tray: Some(s.view()),
+                mic_badge: Some(s.badge_effect()),
                 ..Effects::default()
-            },
-        );
+            }
+        };
+        apply(&self.ui, effects);
     }
 
     /// 새 버전 알림을 OSD 내용에 반영한다 (띄우지 않고 바꾸기만).
@@ -329,6 +386,14 @@ impl Runtime {
 
     pub fn tray(&self) -> Option<Tray> {
         self.ui.lock().unwrap().tray.clone()
+    }
+
+    /// 화면 구성·배율·작업 영역이 바뀌었을 때 보이는 마이크 배지의 위치를 다시 잡는다.
+    pub fn reposition_mic_badge(&self) {
+        let badge = self.ui.lock().unwrap().mic_badge.clone();
+        if let Some(badge) = badge {
+            badge.reposition();
+        }
     }
 
     /// 트레이 Windows 시작 시 실행 체크를 실제 상태에 맞춘다.
@@ -374,6 +439,7 @@ impl Runtime {
                 tray: Some(s.view()),
                 osd_refresh: Some(s.payload(None, None)),
                 lang,
+                mic_badge: Some(s.badge_effect()),
                 ..Effects::default()
             }
         };
@@ -585,7 +651,10 @@ fn exec_loop(events: Receiver<ExecEvent>, state: &Mutex<State>, ui: &Mutex<Ui>) 
             let effects = {
                 let mut s = state.lock().unwrap();
                 s.mic_muted = Some(muted);
+                s.mic_gen += 1;
                 Effects {
+                    tray: Some(s.view()),
+                    mic_badge: Some(s.badge_effect()),
                     osd: Some((s.payload(s.last_button, None), Show::For(osd::BUTTON))),
                     ..Effects::default()
                 }
@@ -621,9 +690,14 @@ fn apply(ui: &Mutex<Ui>, effects: Effects) {
 }
 
 fn apply_inner(ui: &Mutex<Ui>, effects: Effects) {
-    let (tray, osd, app) = {
+    let (tray, osd, mic_badge, app) = {
         let ui = ui.lock().unwrap();
-        (ui.tray.clone(), ui.osd.clone(), ui.app.clone())
+        (
+            ui.tray.clone(),
+            ui.osd.clone(),
+            ui.mic_badge.clone(),
+            ui.app.clone(),
+        )
     };
     if let Some(app) = &app {
         if let Some(config) = effects.config_changed {
@@ -647,6 +721,9 @@ fn apply_inner(ui: &Mutex<Ui>, effects: Effects) {
         if let Some((payload, how)) = effects.osd {
             osd.show(payload, how);
         }
+    }
+    if let (Some(badge), Some((seq, visible))) = (mic_badge, effects.mic_badge) {
+        badge.set_visible(seq, visible);
     }
 }
 

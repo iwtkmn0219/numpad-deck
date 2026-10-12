@@ -156,11 +156,11 @@ fn autostart_off_marker(runtime: &Runtime) -> Option<std::path::PathBuf> {
 
 /// 기본은 켜짐: 사용자가 직접 끈 적이 없으면 켠다 (릴리스 빌드만 — 개발용 실행 파일이
 /// 로그인 때 뜨면 안 된다).
+///
+/// 켜져 있어도 다시 등록한다: 등록된 경로가 다른 실행 파일(옮긴 설치, 개발용 실행 파일)이면
+/// 지금 실행 파일로 고쳐진다.
 fn apply_default_autostart(app: &AppHandle, runtime: &Runtime) {
-    if cfg!(debug_assertions) || autostart_enabled(app) {
-        return;
-    }
-    if autostart_off_marker(runtime).is_some_and(|m| m.exists()) {
+    if !AUTOSTART_AVAILABLE || autostart_off_marker(runtime).is_some_and(|m| m.exists()) {
         return;
     }
     if let Err(e) = app.autolaunch().enable() {
@@ -168,9 +168,24 @@ fn apply_default_autostart(app: &AppHandle, runtime: &Runtime) {
     }
 }
 
+/// 개발 빌드는 Windows 시작 시 실행을 바꾸지 않는다. 개발용 실행 파일(콘솔 창이 뜨고 화면은
+/// 개발 서버가 있어야 보임)이 로그인 때 뜨게 되기 때문이다 (실제로 겪음).
+const AUTOSTART_AVAILABLE: bool = !cfg!(debug_assertions);
+
+/// 설정 창에 보내는 상태. 프런트엔드 `SettingsDialog.tsx`의 `Autostart`와 모양이 같아야 한다.
+#[derive(serde::Serialize)]
+struct AutostartState {
+    enabled: bool,
+    /// 개발 빌드면 false (바꿀 수 없음)
+    available: bool,
+}
+
 /// Windows 시작 시 실행을 켜거나 끈다 (설정 창, 트레이 메뉴). 끄면 다음 실행 때 다시 켜지
 /// 않도록 표시를 남긴다. 실제 상태를 돌려준다.
 fn set_autostart_state(app: &AppHandle, runtime: &Runtime, on: bool) -> bool {
+    if !AUTOSTART_AVAILABLE {
+        return autostart_enabled(app);
+    }
     let manager = app.autolaunch();
     let result = if on {
         manager.enable()
@@ -193,13 +208,19 @@ fn set_autostart_state(app: &AppHandle, runtime: &Runtime, on: bool) -> bool {
 }
 
 #[tauri::command]
-fn get_autostart(app: AppHandle) -> bool {
-    autostart_enabled(&app)
+fn get_autostart(app: AppHandle) -> AutostartState {
+    AutostartState {
+        enabled: autostart_enabled(&app),
+        available: AUTOSTART_AVAILABLE,
+    }
 }
 
 #[tauri::command]
-fn set_autostart(app: AppHandle, runtime: State<'_, Arc<Runtime>>, on: bool) -> bool {
-    set_autostart_state(&app, &runtime, on)
+fn set_autostart(app: AppHandle, runtime: State<'_, Arc<Runtime>>, on: bool) -> AutostartState {
+    AutostartState {
+        enabled: set_autostart_state(&app, &runtime, on),
+        available: AUTOSTART_AVAILABLE,
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -240,6 +261,7 @@ pub fn run() {
                 app.handle(),
                 &runtime.view(),
                 autostart_enabled(app.handle()),
+                AUTOSTART_AVAILABLE,
             )?;
             // OSD를 못 만들어도 덱은 동작해야 한다.
             let osd = Osd::create(app.handle())

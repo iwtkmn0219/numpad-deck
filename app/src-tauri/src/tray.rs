@@ -66,8 +66,14 @@ pub struct Tray {
 }
 
 impl Tray {
-    /// `autostart`: 지금 Windows 시작 시 실행이 켜져 있는가
-    pub fn create(app: &AppHandle, view: &View, autostart: bool) -> tauri::Result<Tray> {
+    /// `autostart`: 지금 Windows 시작 시 실행이 켜져 있는가, `autostart_available`: 바꿀 수
+    /// 있는가 (개발 빌드는 못 바꾼다)
+    pub fn create(
+        app: &AppHandle,
+        view: &View,
+        autostart: bool,
+        autostart_available: bool,
+    ) -> tauri::Result<Tray> {
         let status = MenuItem::with_id(app, "status", "", false, None::<&str>)?;
         let error = MenuItem::with_id(app, "error", "", false, None::<&str>)?;
         // 글자는 `update`가 지금 언어로 쓴다.
@@ -75,8 +81,14 @@ impl Tray {
         let pause = CheckMenuItem::with_id(app, MENU_PAUSE, "", true, false, None::<&str>)?;
         let stop_sounds = MenuItem::with_id(app, MENU_STOP_SOUNDS, "", true, None::<&str>)?;
         let open = MenuItem::with_id(app, MENU_OPEN_CONFIG, "", true, None::<&str>)?;
-        let autostart =
-            CheckMenuItem::with_id(app, MENU_AUTOSTART, "", true, autostart, None::<&str>)?;
+        let autostart = CheckMenuItem::with_id(
+            app,
+            MENU_AUTOSTART,
+            "",
+            autostart_available,
+            autostart,
+            None::<&str>,
+        )?;
         let quit = MenuItem::with_id(app, MENU_QUIT, "", true, None::<&str>)?;
         let menu = Menu::with_items(
             app,

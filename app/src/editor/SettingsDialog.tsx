@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Download, FileJson, FolderOpen, RefreshCw } from "lucide-react";
+import type { Action } from "@/bindings/Action";
+import type { Config } from "@/bindings/Config";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useT } from "@/i18n";
@@ -32,6 +34,14 @@ interface UpdateState {
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  config: Config;
+  update: (recipe: (draft: Config) => void) => void;
+}
+
+/** 어느 페이지에든(묶음 안 포함) 마이크 끄기 버튼이 있는가. 코어 `Config::uses_mic_mute`와 같은 규칙. */
+function usesMicMute(config: Config): boolean {
+  const has = (a: Action): boolean => a.type === "micMute" || (a.type === "sequence" && a.steps.some(has));
+  return config.pages.some((p) => Object.values(p.buttons).some((b) => b && has(b.action)));
 }
 
 /** 업데이트 상태 (설정 창·편집기 띠가 같이 쓴다). */
@@ -68,7 +78,7 @@ export function UpdateBanner() {
 }
 
 /** 앱 설정: Windows 시작 시 실행, 설정 파일, 앱 정보. 버튼·페이지 편집과 상관없는 것만 둔다. */
-export function SettingsDialog({ open, onOpenChange }: Props) {
+export function SettingsDialog({ open, onOpenChange, config, update: updateConfig }: Props) {
   const t = useT().editor.settings;
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [autostart, setAutostart] = useState<Autostart | null>(null);
@@ -102,6 +112,31 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
               <span className="block">{t.autostart}</span>
               <span className="block text-muted-foreground">
                 {autostart && !autostart.available ? t.autostartDev : t.autostartHint}
+              </span>
+            </span>
+          </label>
+        </section>
+
+        <section className="space-y-2 border-t pt-4">
+          <h3 className="font-medium">{t.micTitle}</h3>
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-4 accent-blue-600"
+              checked={usesMicMute(config) && config.micIndicator !== false}
+              disabled={!usesMicMute(config)}
+              onChange={(e) =>
+                updateConfig((draft) => {
+                  // 켜기 = 기본값이므로 파일에서 지운다
+                  if (e.target.checked) delete draft.micIndicator;
+                  else draft.micIndicator = false;
+                })
+              }
+            />
+            <span>
+              <span className="block">{t.micIndicator}</span>
+              <span className="block text-muted-foreground">
+                {usesMicMute(config) ? t.micIndicatorHint : t.micIndicatorNoButton}
               </span>
             </span>
           </label>

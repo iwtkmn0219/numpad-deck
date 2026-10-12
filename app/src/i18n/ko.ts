@@ -92,6 +92,10 @@ export const ko = {
       autostart: "Windows 시작 시 실행",
       autostartHint: "켜 두면 PC를 켤 때 Numpad Deck이 트레이에 자동으로 떠요.",
       autostartDev: "개발판에서는 바꿀 수 없어요 (설치한 앱에서 바꿔 주세요).",
+      micTitle: "마이크",
+      micIndicator: "마이크가 꺼져 있으면 화면 위에 표시",
+      micIndicatorHint: "회의 중에도 꺼져 있는지 바로 알 수 있어요. 트레이 아이콘에도 빨간 점이 찍혀요.",
+      micIndicatorNoButton: "'마이크 끄기' 버튼을 하나 만들면 쓸 수 있어요.",
       updateTitle: "업데이트",
       update: {
         idle: "새 버전이 있는지 확인해 보세요.",

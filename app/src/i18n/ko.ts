@@ -13,7 +13,6 @@ export const ko = {
     numlockOn: "켜짐",
     numlockOff: "꺼짐",
     numbersHint: "NumLock을 끄면 버튼을 쓸 수 있어요.",
-    mic: { muted: "마이크 꺼짐", live: "마이크 켜짐" },
   },
   onboarding: {
     step: (n: number) => `${n} / 3`,

@@ -12,9 +12,6 @@ export function Osd({ payload }: { payload: OsdPayload }) {
   const { mode, error } = payload;
   const active = mode === "deck";
   const grid = gridFor(payload.layout);
-  // 방금 누른 버튼이 마이크 음소거면 바뀐 상태를 크게 보인다
-  const pressed = payload.highlight ? payload.buttons[payload.highlight] : undefined;
-  const micNotice = pressed?.action.type === "micMute" && !error ? payload.micMuted : null;
   const [highlight, setHighlight] = useState<string | null>(null);
 
   // 새 알림(seq)마다 강조를 켜고 잠시 뒤 끈다. 실패 표시는 다음 알림까지 둔다.
@@ -59,28 +56,22 @@ export function Osd({ payload }: { payload: OsdPayload }) {
               payload={payload}
               t={t}
               lit={slot.kind !== "mode" && slot.key === highlight}
-              failed={slot.kind !== "mode" && slot.key === highlight && error !== null}
+              failed={
+                slot.kind !== "mode" && slot.key === highlight && error !== null
+              }
             />
           ))}
         </div>
 
-        {micNotice !== null && (
-          <p
-            className={`mt-2 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium ${
-              micNotice ? "bg-red-500/20 text-red-200" : "bg-green-500/15 text-green-200"
-            }`}
-          >
-            <Icon name={micNotice ? "mic-off" : "mic"} className="size-4" />
-            {micNotice ? t.osd.mic.muted : t.osd.mic.live}
-          </p>
-        )}
         {error && (
           <p className="mt-2 rounded-lg bg-red-500/15 px-2.5 py-1.5 text-xs leading-snug text-red-200">
             {error}
           </p>
         )}
         {mode === "numbers" && (
-          <p className="mt-2 px-1 text-xs text-neutral-400">{t.osd.numbersHint}</p>
+          <p className="mt-2 px-1 text-xs text-neutral-400">
+            {t.osd.numbersHint}
+          </p>
         )}
       </div>
     </div>
@@ -100,12 +91,18 @@ function Cell({
   lit: boolean;
   failed: boolean;
 }) {
-  const base = "flex flex-col overflow-hidden rounded-lg px-2 py-1.5 transition-colors duration-150";
+  const base =
+    "flex flex-col overflow-hidden rounded-lg px-2 py-1.5 transition-colors duration-150";
 
   if (slot.kind === "mode") {
     return (
-      <div style={{ gridArea: slot.area }} className={`${base} items-center justify-center bg-white/5`}>
-        <span className="text-[10px] text-neutral-500">{t.osd.numlockLabel}</span>
+      <div
+        style={{ gridArea: slot.area }}
+        className={`${base} items-center justify-center bg-white/5`}
+      >
+        <span className="text-[10px] text-neutral-500">
+          {t.osd.numlockLabel}
+        </span>
         <span className="text-xs font-medium text-neutral-300">
           {payload.mode === "numbers" ? t.osd.numlockOn : t.osd.numlockOff}
         </span>
@@ -126,29 +123,37 @@ function Cell({
 
   const button = payload.buttons[slot.key];
   const label = button?.label;
-  // 마이크 음소거 버튼은 지금 상태를 아이콘과 점으로 보인다 (한 번이라도 눌렀으면)
+  // 마이크 음소거 버튼은 지금 상태를 보인다: 켜져 있으면 초록 불, 꺼져 있으면 마이크 꺼짐 아이콘
   const mic = button?.action.type === "micMute" ? payload.micMuted : null;
   const tone = failed
     ? "bg-red-500 text-white"
     : lit
       ? "bg-blue-500 text-white"
-      : label
-        ? "bg-white/10 text-white"
-        : "border border-dashed border-white/10 text-neutral-600";
+      : mic === false
+        ? "bg-green-600 text-white"
+        : label
+          ? "bg-white/10 text-white"
+          : "border border-dashed border-white/10 text-neutral-600";
 
   return (
     <div style={{ gridArea: slot.area }} className={`${base} ${tone}`}>
       <span className="flex w-full items-start justify-between">
-        <span className={`text-[10px] leading-none ${lit ? "text-white/70" : "text-neutral-500"}`}>
+        <span
+          className={`text-[10px] leading-none ${lit ? "text-white/70" : "text-neutral-500"}`}
+        >
           {slot.key}
         </span>
-        {button && mic !== null ? (
-          <span className="flex items-center gap-1" title={mic ? t.osd.mic.muted : t.osd.mic.live}>
-            <span className={`size-2 rounded-full ${mic ? "bg-red-400" : "bg-green-400"}`} />
-            <Icon name={mic ? "mic-off" : "mic"} className="size-4 opacity-90" />
-          </span>
-        ) : (
-          button && <Icon name={buttonIcon(button)} className="size-4 opacity-90" />
+        {button && (
+          <Icon
+            name={
+              mic === true
+                ? "mic-off"
+                : mic === false
+                  ? "mic"
+                  : buttonIcon(button)
+            }
+            className="size-4 opacity-90"
+          />
         )}
       </span>
       <span className="mt-auto line-clamp-2 w-full text-[12.5px] leading-tight font-medium break-keep [overflow-wrap:anywhere]">

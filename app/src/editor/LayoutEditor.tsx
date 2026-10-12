@@ -6,12 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
-import { isStandard, LAYOUT_MAX, STANDARD_LAYOUT } from "@/shared/layout";
+import { gridFor, isStandard, LAYOUT_MAX, normalized, sameLayout, STANDARD_LAYOUT } from "@/shared/layout";
 import { pauseDeckForwarding } from "./api";
 import { numpadLabel } from "./keymap";
 
 /** 칸 한 변(px)과 칸 사이 간격 */
-const CELL = 52;
+const CELL = 44;
 const GAP = 4;
 const STEP = CELL + GAP;
 
@@ -46,17 +46,27 @@ function fits(places: KeyPlace[], key: string, x: number, y: number, w: number, 
  */
 export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
   const t = useT().editor.layout;
-  const places = config.layout ?? STANDARD_LAYOUT;
+  const saved = config.layout ?? STANDARD_LAYOUT;
+  // 편집 중인 배치 (판 위 좌표). 열 때 판 가운데에 놓아 사방에 옮길 자리를 둔다.
+  // 저장은 왼쪽 위로 붙여서 한다. 되돌리기 등으로 저장된 모양이 바뀌면 다시 가운데에 놓는다.
+  const [places, setPlaces] = useState<KeyPlace[]>(() => centered(saved));
   const [selected, setSelected] = useState<LayoutKeyName | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const canvas = useRef<HTMLDivElement>(null);
 
-  const commit = (next: KeyPlace[]) =>
+  useEffect(() => {
+    if (open) setPlaces((current) => (sameLayout(current, saved) ? current : centered(saved)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, JSON.stringify(saved)]);
+
+  const commit = (next: KeyPlace[]) => {
+    setPlaces(next);
     update((c) => {
       if (isStandard(next)) delete c.layout;
-      else c.layout = next;
+      else c.layout = normalized(next);
     });
+  };
 
   // 열려 있는 동안 넘패드 키는 버튼을 실행하지 않고 그 키를 고른다
   useEffect(() => {
@@ -201,7 +211,7 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
             disabled={!config.layout}
             onClick={() => {
               setNotice(null);
-              commit(STANDARD_LAYOUT);
+              commit(centered(STANDARD_LAYOUT));
             }}
           >
             {t.reset}
@@ -211,6 +221,12 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
       </DialogContent>
     </Dialog>
   );
+}
+
+/** 판 가운데에 놓은 배치 */
+function centered(layout: KeyPlace[]): KeyPlace[] {
+  const { cols, rows } = gridFor(layout);
+  return normalized(layout, Math.floor((LAYOUT_MAX - cols) / 2), Math.floor((LAYOUT_MAX - rows) / 2));
 }
 
 function box(x: number, y: number, p: Pick<KeyPlace, "w" | "h">): React.CSSProperties {

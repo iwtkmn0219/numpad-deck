@@ -146,7 +146,7 @@ pub struct KeyPlace {
 }
 
 /// 배치 칸의 가로·세로 최대 수
-pub const LAYOUT_MAX: u8 = 8;
+pub const LAYOUT_MAX: u8 = 10;
 
 /// 배치에 들어가는 키 이름: 넘패드 16개 + NumLock.
 pub fn layout_key_names() -> impl Iterator<Item = &'static str> {

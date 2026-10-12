@@ -15,7 +15,7 @@ export type Slot =
   | { kind: "mode"; area: string };
 
 /** 배치 칸의 가로·세로 최대 수 (코어 `LAYOUT_MAX`와 같다) */
-export const LAYOUT_MAX = 8;
+export const LAYOUT_MAX = 10;
 
 const place = (key: LayoutKeyName, x: number, y: number, w = 1, h = 1): KeyPlace => ({ key, x, y, w, h });
 
@@ -77,15 +77,29 @@ export function gridStyle(grid: Grid, rowHeight: number): React.CSSProperties {
   };
 }
 
-/** 표준 배치와 같은가 (같으면 설정에 적지 않는다) */
-export function isStandard(layout: KeyPlace[]): boolean {
+/** 왼쪽 위 빈 테두리를 없앤 배치 (`dx`·`dy`만큼 더 옮길 수 있다) */
+export function normalized(layout: KeyPlace[], dx = 0, dy = 0): KeyPlace[] {
+  const minX = Math.min(...layout.map((p) => p.x));
+  const minY = Math.min(...layout.map((p) => p.y));
+  return layout.map((p) => ({ ...p, x: p.x - minX + dx, y: p.y - minY + dy }));
+}
+
+/** 두 배치가 같은 모양인가 (위치를 통째로 옮긴 것은 같은 모양) */
+export function sameLayout(a: KeyPlace[], b: KeyPlace[]): boolean {
+  const na = normalized(a);
+  const nb = normalized(b);
   return (
-    layout.length === STANDARD_LAYOUT.length &&
-    STANDARD_LAYOUT.every((s) => {
-      const p = layout.find((l) => l.key === s.key);
+    na.length === nb.length &&
+    nb.every((s) => {
+      const p = na.find((l) => l.key === s.key);
       return p && p.x === s.x && p.y === s.y && p.w === s.w && p.h === s.h;
     })
   );
+}
+
+/** 표준 배치와 같은가 (같으면 설정에 적지 않는다) */
+export function isStandard(layout: KeyPlace[]): boolean {
+  return sameLayout(layout, STANDARD_LAYOUT);
 }
 
 /** 버튼 키 순서 (위에서 아래, 왼쪽에서 오른쪽). `layout.rs`의 `BUTTON_KEYS`와 같다. */

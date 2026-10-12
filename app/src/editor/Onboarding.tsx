@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useLang, useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { buttonIcon, Icon } from "@/shared/icons";
+import { DEFAULT_SYSTEM_KEYS } from "@/shared/layout";
 import { numpadLabel } from "./keymap";
 import { listPresets } from "./PresetDialog";
 
@@ -272,6 +273,7 @@ function PresetStep({
   setChosen: (ids: string[]) => void;
 }) {
   const t = useT().onboarding.presets;
+  const keys = config.systemKeys ?? DEFAULT_SYSTEM_KEYS;
   const lang = useLang();
   const [presets, setPresets] = useState<Preset[]>([]);
 
@@ -284,7 +286,7 @@ function PresetStep({
 
   return (
     <div className="space-y-5">
-      <StepTitle title={t.title} body={t.body} />
+      <StepTitle title={t.title} body={t.body(keys.prev, keys.next)} />
       <div className="grid grid-cols-2 gap-2">
         {presets.map((p) => {
           const already = config.pages.some((page) => page.name === p.name);

@@ -47,7 +47,7 @@ export function KeyGrid({ grid, page, selected, onSelect }: Props) {
               )}
             >
               <span className="text-[11px]">{slot.key}</span>
-              <span className="mt-auto text-sm">{t.system[slot.key]}</span>
+              <span className="mt-auto text-sm">{t.system[slot.role]}</span>
             </button>
           );
         }

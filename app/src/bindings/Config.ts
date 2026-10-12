@@ -2,6 +2,7 @@
 import type { KeyPlace } from "./KeyPlace";
 import type { Lang } from "./Lang";
 import type { Page } from "./Page";
+import type { SystemKeys } from "./SystemKeys";
 
 export type Config = { version: number, 
 /**
@@ -11,4 +12,9 @@ language?: Lang,
 /**
  * 화면(OSD·편집기)에 그리는 넘패드 모양. 없으면 표준 넘패드. 키 역할과는 상관없다.
  */
-layout?: Array<KeyPlace>, pages: Array<Page>, };
+layout?: Array<KeyPlace>, 
+/**
+ * 시스템 키 네 개(`/` `*` `-` `.`)의 역할. 없으면 `/` 이전, `*` 다음, `-` OSD, `.` 처음.
+ * 네 키 안에서만 서로 바꾼다 (버튼 12개는 그대로).
+ */
+systemKeys?: SystemKeys, pages: Array<Page>, };

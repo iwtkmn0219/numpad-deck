@@ -6,7 +6,7 @@
 
 use crate::config::{Button, Config};
 use crate::key::NumpadKey;
-use crate::layout::{self, Role};
+use crate::layout::Role;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Dispatch {
@@ -40,7 +40,7 @@ impl Deck {
 
     pub fn on_press(&mut self, key: NumpadKey, config: &Config) -> Dispatch {
         let count = config.pages.len().max(1);
-        match layout::role(key) {
+        match config.role(key) {
             Role::Button(_) => Dispatch::Button {
                 page: self.page,
                 key,

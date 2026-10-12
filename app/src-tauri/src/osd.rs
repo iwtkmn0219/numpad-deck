@@ -59,6 +59,8 @@ pub struct Payload {
     pub mic_muted: Option<bool>,
     /// 화면에 그릴 넘패드 모양 (없으면 표준)
     pub layout: Option<Vec<deck_core::config::KeyPlace>>,
+    /// 시스템 키 역할 (없으면 기본)
+    pub system_keys: Option<deck_core::config::SystemKeys>,
 }
 
 /// 띄우는 방법.

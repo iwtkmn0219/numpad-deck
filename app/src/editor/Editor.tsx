@@ -76,7 +76,7 @@ export function Editor() {
 
       <main className="flex min-h-0 flex-1 gap-6 overflow-auto p-6">
         <div className="w-[480px] shrink-0">
-          <KeyGrid grid={gridFor(config.layout)} page={current} selected={selected} onSelect={setSelected} />
+          <KeyGrid grid={gridFor(config.layout, config.systemKeys)} page={current} selected={selected} onSelect={setSelected} />
         </div>
         <aside className="min-h-0 min-w-0 flex-1 overflow-y-auto rounded-xl border bg-card p-5">
           <ButtonPanel config={config} page={page} selected={selected} update={update} />

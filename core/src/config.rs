@@ -45,6 +45,15 @@ pub struct Config {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub layout: Option<Vec<KeyPlace>>,
+    /// 시스템 키 네 개(`/` `*` `-` `.`)의 역할. 없으면 `/` 이전, `*` 다음, `-` OSD, `.` 처음.
+    /// 네 키 안에서만 서로 바꾼다 (버튼 12개는 그대로).
+    #[serde(
+        rename = "systemKeys",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub system_keys: Option<SystemKeys>,
     pub pages: Vec<Page>,
 }
 
@@ -143,6 +152,65 @@ pub struct KeyPlace {
     pub w: u8,
     /// 1 또는 2
     pub h: u8,
+}
+
+/// 시스템 키 역할 → 키캡 글자(`"/"` `"*"` `"-"` `"."` 중 하나, 서로 달라야 한다).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export, export_to = "../../app/src/bindings/")]
+pub struct SystemKeys {
+    #[ts(as = "SystemKeyName")]
+    pub prev: String,
+    #[ts(as = "SystemKeyName")]
+    pub next: String,
+    #[ts(as = "SystemKeyName")]
+    pub osd: String,
+    #[ts(as = "SystemKeyName")]
+    pub first: String,
+}
+
+/// TypeScript 타입 생성 전용: 시스템 키 이름.
+#[allow(dead_code)]
+#[derive(TS)]
+#[ts(export, export_to = "../../app/src/bindings/")]
+enum SystemKeyName {
+    #[ts(rename = "/")]
+    Divide,
+    #[ts(rename = "*")]
+    Multiply,
+    #[ts(rename = "-")]
+    Subtract,
+    #[ts(rename = ".")]
+    Decimal,
+}
+
+impl SystemKeys {
+    fn roles(&self) -> [(&str, Role); 4] {
+        [
+            (self.prev.as_str(), Role::PrevPage),
+            (self.next.as_str(), Role::NextPage),
+            (self.osd.as_str(), Role::ToggleOsd),
+            (self.first.as_str(), Role::FirstPage),
+        ]
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        let keys: Vec<&str> = self.roles().iter().map(|(k, _)| *k).collect();
+        let system: Vec<&str> = NumpadKey::ALL
+            .into_iter()
+            .filter(|&k| !matches!(layout::role(k), Role::Button(_)))
+            .map(NumpadKey::label)
+            .collect();
+        let ok = keys.iter().all(|k| system.contains(k)) && system.iter().all(|k| keys.contains(k));
+        if ok {
+            Ok(())
+        } else {
+            Err(tr(
+                "시스템 키 역할은 / * - . 네 키에 하나씩 정해야 합니다.",
+                "Each of the system keys / * - . must have exactly one role.",
+            ))
+        }
+    }
 }
 
 /// 배치 칸의 가로·세로 최대 수
@@ -345,6 +413,23 @@ impl Config {
         crate::presets::default_config(crate::i18n::current())
     }
 
+    /// 키의 역할. 시스템 키는 `systemKeys`로 바꾼 역할을 따른다.
+    pub fn role(&self, key: NumpadKey) -> Role {
+        let fixed = layout::role(key);
+        if matches!(fixed, Role::Button(_)) {
+            return fixed;
+        }
+        self.system_keys
+            .as_ref()
+            .and_then(|s| {
+                s.roles()
+                    .into_iter()
+                    .find(|(k, _)| *k == key.label())
+                    .map(|(_, r)| r)
+            })
+            .unwrap_or(fixed)
+    }
+
     /// 현재 페이지에서 키에 해당하는 버튼.
     pub fn button(&self, page: usize, key: NumpadKey) -> Option<&Button> {
         let key = ButtonKey::new(key)?;
@@ -361,6 +446,9 @@ impl Config {
         }
         if let Some(layout) = &self.layout {
             validate_layout(layout)?;
+        }
+        if let Some(system) = &self.system_keys {
+            system.validate()?;
         }
         if self.pages.is_empty() {
             return Err(tr(
@@ -695,6 +783,37 @@ mod tests {
         let mut far = standard_layout();
         far[0].x = LAYOUT_MAX;
         config.layout = Some(far);
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn system_keys_swap_roles() {
+        let mut config = Config::default_config();
+        assert_eq!(config.role(NumpadKey::Divide), Role::PrevPage);
+        config.system_keys = Some(SystemKeys {
+            prev: "-".into(),
+            next: "+".into(),
+            osd: "/".into(),
+            first: ".".into(),
+        });
+        // +는 버튼이라 시스템 키가 될 수 없다
+        assert!(config.validate().is_err());
+        config.system_keys = Some(SystemKeys {
+            prev: "-".into(),
+            next: "*".into(),
+            osd: "/".into(),
+            first: ".".into(),
+        });
+        assert!(config.validate().is_ok());
+        assert_eq!(config.role(NumpadKey::Subtract), Role::PrevPage);
+        assert_eq!(config.role(NumpadKey::Divide), Role::ToggleOsd);
+        assert_eq!(config.role(NumpadKey::Multiply), Role::NextPage);
+        assert_eq!(config.role(NumpadKey::N7), Role::Button(0));
+        let text = serde_json::to_string(&config).unwrap();
+        assert!(text.contains("\"systemKeys\""), "{text}");
+        assert_eq!(parse(&text).unwrap().system_keys, config.system_keys);
+        // 같은 키 두 번
+        config.system_keys.as_mut().unwrap().next = "-".into();
         assert!(config.validate().is_err());
     }
 

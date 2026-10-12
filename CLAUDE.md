@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `key.rs`: VK + 확장 플래그 → `NumpadKey`. NumLock ON 형태(`VK_NUMPAD7`)와 OFF 형태(`VK_HOME`)를 같은 키로 식별한다(키 다운/업 짝짓기용). Windows 의존 없음.
 - `gate.rs`: 다운/업 판정(`Pass`/`Swallow`/`Fire`), 자동 반복 억제, 키 업 놓침 복구. Windows 의존 없음.
 - `layout.rs`: v1.0 고정 키 배치.
-- `config.rs`: 설정 JSON 스키마(`Config`/`Page`/`Button`/`Action`, 선택 항목 `language`·`layout` — `layout`은 화면에 그리는 넘패드 모양 `KeyPlace`만, 키 역할은 `layout.rs` 고정), 검증, 원자적 저장, 폴더 감시로 즉시 반영. 기본 설정은 `presets::default_config`(음악·영상 프리셋 한 페이지). 경로는 `%APPDATA%\NumpadDeck\config.json`.
+- `config.rs`: 설정 JSON 스키마(`Config`/`Page`/`Button`/`Action`, 선택 항목 `language`·`layout`·`systemKeys` — `layout`은 화면에 그리는 넘패드 모양 `KeyPlace`만, `systemKeys`는 시스템 키 네 개 안에서 역할 맞바꾸기, 역할은 `Config::role`로 조회), 검증, 원자적 저장, 폴더 감시로 즉시 반영. 기본 설정은 `presets::default_config`(음악·영상 프리셋 한 페이지). 경로는 `%APPDATA%\NumpadDeck\config.json`.
 - `deck.rs`: 현재 페이지와 디스패처. 넘패드 키 → `Dispatch`(버튼/페이지/OSD 토글). 페이지 키는 끝에서 반대쪽으로 돈다. 설정이 바뀌어 페이지가 줄면 마지막 페이지로 옮긴다. Windows 의존 없음.
 - `record.rs`: 단축키 녹화. 녹화 모드에서 훅이 보낸 키 이벤트 → 이름 배열(보조 키 순서 Ctrl·Shift·Alt·Win, 좌우 구분 없음, Esc 취소, 넘패드·이름 없는 키 거부). Windows 의존 없음.
 - `presets.rs` + `presets/*.json`: 프리셋 6개(음악·영상, 창 관리·업무, Zoom, Teams, Meet, OBS — OBS는 키보드에 없는 F13–F22). 이름·버튼 이름은 `{ko, en}`, `Lang`으로 골라 `Page`를 만든다. 첫 실행 기본 설정·편집기·온보딩이 같이 쓴다.
@@ -109,7 +109,7 @@ NumLock 상태는 캐싱하지 말고 **키 입력마다 다시 조회한다.** 
 - **자동 반복**: 반복 다운은 무시한다. 버튼 1회 = 액션 1회.
 - **훅 생존**: 생존 조회 API가 없으므로 주기적으로, 그리고 세션 잠금 해제·절전 복귀 때 재설치한다.
 
-### 키 배치 (v1.0 고정)
+### 키 배치 (기본값, 시스템 키 네 개끼리는 역할을 바꿀 수 있음)
 
 | 키 | 역할 |
 | --- | --- |

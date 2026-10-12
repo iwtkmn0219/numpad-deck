@@ -152,7 +152,7 @@ export function PageTabs({ config, page, onSelect, update }: Props) {
           <DropdownMenuItem onSelect={() => setPresetOpen(true)}>{t.addPresetPage}</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <PresetDialog open={presetOpen} onOpenChange={setPresetOpen} onAdd={addPresetPage} layout={config.layout} />
+      <PresetDialog open={presetOpen} onOpenChange={setPresetOpen} onAdd={addPresetPage} layout={config.layout} systemKeys={config.systemKeys} />
 
       <AlertDialog open={target !== null} onOpenChange={(open) => !open && setDeleting(null)}>
         <AlertDialogContent>

@@ -2,6 +2,7 @@
 
 import type { Button } from "@/bindings/Button";
 import type { KeyPlace } from "@/bindings/KeyPlace";
+import type { SystemKeys } from "@/bindings/SystemKeys";
 
 export type Mode = "deck" | "numbers" | "paused";
 
@@ -23,6 +24,8 @@ export interface OsdPayload {
   micMuted: boolean | null;
   /** 넘패드 모양 (null이면 표준) */
   layout: KeyPlace[] | null;
+  /** 시스템 키 역할 (null이면 기본) */
+  systemKeys: SystemKeys | null;
 }
 
 export const OSD_EVENT = "osd://update";

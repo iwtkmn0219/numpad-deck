@@ -85,6 +85,7 @@ impl State {
             error,
             mic_muted: self.mic_muted,
             layout: self.config.layout.clone(),
+            system_keys: self.config.system_keys.clone(),
         }
     }
 }

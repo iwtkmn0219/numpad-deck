@@ -6,13 +6,25 @@
 import type { ButtonKeyName } from "@/bindings/ButtonKeyName";
 import type { KeyPlace } from "@/bindings/KeyPlace";
 import type { LayoutKeyName } from "@/bindings/LayoutKeyName";
+import type { SystemKeys } from "@/bindings/SystemKeys";
 
 export type SystemKey = "/" | "*" | "-" | ".";
+export type SystemRole = keyof SystemKeys;
 
 export type Slot =
   | { kind: "button"; key: ButtonKeyName; area: string }
-  | { kind: "system"; key: SystemKey; area: string }
+  | { kind: "system"; key: SystemKey; role: SystemRole; area: string }
   | { kind: "mode"; area: string };
+
+/** 시스템 키 기본 역할 (코어 `layout.rs`와 같다) */
+export const DEFAULT_SYSTEM_KEYS: SystemKeys = { prev: "/", next: "*", osd: "-", first: "." };
+export const SYSTEM_ROLES: SystemRole[] = ["prev", "next", "osd", "first"];
+
+/** 시스템 키가 맡은 역할 */
+export function systemRole(key: SystemKey, systemKeys?: SystemKeys | null): SystemRole {
+  const keys = systemKeys ?? DEFAULT_SYSTEM_KEYS;
+  return SYSTEM_ROLES.find((r) => keys[r] === key) ?? SYSTEM_ROLES.find((r) => DEFAULT_SYSTEM_KEYS[r] === key)!;
+}
 
 /** 배치 칸의 가로·세로 최대 수 (코어 `LAYOUT_MAX`와 같다) */
 export const LAYOUT_MAX = 10;
@@ -49,7 +61,7 @@ export interface Grid {
 }
 
 /** 배치(없으면 표준) → 그릴 칸. 빈 테두리는 잘라 왼쪽 위에 붙인다. */
-export function gridFor(layout?: KeyPlace[] | null): Grid {
+export function gridFor(layout?: KeyPlace[] | null, systemKeys?: SystemKeys | null): Grid {
   const places = layout ?? STANDARD_LAYOUT;
   const minX = Math.min(...places.map((p) => p.x));
   const minY = Math.min(...places.map((p) => p.y));
@@ -58,7 +70,10 @@ export function gridFor(layout?: KeyPlace[] | null): Grid {
   const slots = places.map((p): Slot => {
     const area = `${p.y - minY + 1} / ${p.x - minX + 1} / ${p.y - minY + p.h + 1} / ${p.x - minX + p.w + 1}`;
     if (p.key === "NumLock") return { kind: "mode", area };
-    if (SYSTEM_KEYS.includes(p.key)) return { kind: "system", key: p.key as SystemKey, area };
+    if (SYSTEM_KEYS.includes(p.key)) {
+      const key = p.key as SystemKey;
+      return { kind: "system", key, role: systemRole(key, systemKeys), area };
+    }
     return { kind: "button", key: p.key as ButtonKeyName, area };
   });
   return { slots, cols, rows };

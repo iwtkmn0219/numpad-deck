@@ -9,6 +9,7 @@ import { useLang, useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { buttonIcon, Icon } from "@/shared/icons";
 import type { KeyPlace } from "@/bindings/KeyPlace";
+import type { SystemKeys } from "@/bindings/SystemKeys";
 import { gridFor, gridStyle } from "@/shared/layout";
 
 const cache = new Map<Lang, Promise<Preset[]>>();
@@ -27,12 +28,13 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAdd: (page: Page) => void;
-  /** 미리보기를 이 모양으로 (설정의 배치) */
+  /** 미리보기를 이 모양으로 (설정의 배치·시스템 키) */
   layout?: KeyPlace[];
+  systemKeys?: SystemKeys;
 }
 
 /** 프리셋에서 페이지 추가: 왼쪽 목록, 오른쪽 미리보기. */
-export function PresetDialog({ open, onOpenChange, onAdd, layout }: Props) {
+export function PresetDialog({ open, onOpenChange, onAdd, layout, systemKeys }: Props) {
   const t = useT().editor.presets;
   const lang = useLang();
   const [presets, setPresets] = useState<Preset[]>([]);
@@ -70,7 +72,7 @@ export function PresetDialog({ open, onOpenChange, onAdd, layout }: Props) {
           {preset && (
             <div className="min-w-0 flex-1 space-y-3">
               <p className="text-sm text-muted-foreground">{preset.description}</p>
-              <MiniGrid page={preset.page} layout={layout} />
+              <MiniGrid page={preset.page} layout={layout} systemKeys={systemKeys} />
               <div className="flex justify-end">
                 <Button onClick={() => onAdd(preset.page)}>{t.add(preset.name)}</Button>
               </div>
@@ -83,9 +85,9 @@ export function PresetDialog({ open, onOpenChange, onAdd, layout }: Props) {
 }
 
 /** 프리셋 미리보기용 작은 넘패드 */
-function MiniGrid({ page, layout }: { page: Page; layout?: KeyPlace[] }) {
+function MiniGrid({ page, layout, systemKeys }: { page: Page; layout?: KeyPlace[]; systemKeys?: SystemKeys }) {
   const t = useT();
-  const grid = gridFor(layout);
+  const grid = gridFor(layout, systemKeys);
   return (
     <div className="gap-1.5" style={gridStyle(grid, 52)}>
       {grid.slots.map((slot) => {
@@ -99,7 +101,7 @@ function MiniGrid({ page, layout }: { page: Page; layout?: KeyPlace[] }) {
               style={{ gridArea: slot.area }}
               className="flex items-center justify-center rounded-lg bg-muted text-xs text-muted-foreground"
             >
-              {t.system[slot.key]}
+              {t.system[slot.role]}
             </div>
           );
         }

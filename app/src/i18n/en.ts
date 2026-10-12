@@ -4,10 +4,10 @@ import type { Dict } from "./ko";
 
 export const en: Dict = {
   system: {
-    "/": "◀ Prev",
-    "*": "Next ▶",
-    "-": "Show",
-    ".": "First",
+    prev: "◀ Prev",
+    next: "Next ▶",
+    osd: "Show",
+    first: "First",
   },
   osd: {
     mode: { deck: "Deck mode", numbers: "Number mode", paused: "Paused" },
@@ -62,7 +62,8 @@ export const en: Dict = {
     },
     presets: {
       title: "Pick the buttons you'll use",
-      body: "Each preset you pick is added as a page. Use numpad / and * to switch pages. You can change everything later in the editor.",
+      body: (prev: string, next: string) =>
+        `Each preset you pick is added as a page. Use numpad ${prev} and ${next} to switch pages. You can change everything later in the editor.`,
       already: "Already on the first page",
       pinTitle: "Keep the tray icon on the taskbar",
       pinBody:
@@ -81,6 +82,8 @@ export const en: Dict = {
       wide: "2 columns wide",
       tall: "2 rows tall",
       blocked: "Another key is in the way. Move that key first.",
+      role: "What this key does",
+      roleHint: "Swaps roles with another system key.",
       reset: "Standard layout",
       done: "Done",
     },

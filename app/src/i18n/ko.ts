@@ -1,11 +1,12 @@
 // 한국어 UI 문자열. 영어(en.ts)도 같은 모양이어야 한다 (`Dict`).
 
 export const ko = {
+  /** 시스템 키 역할 (어느 키가 맡는지는 설정의 systemKeys) */
   system: {
-    "/": "◀ 이전",
-    "*": "다음 ▶",
-    "-": "화면",
-    ".": "처음",
+    prev: "◀ 이전",
+    next: "다음 ▶",
+    osd: "화면",
+    first: "처음",
   },
   osd: {
     mode: { deck: "덱 모드", numbers: "숫자 모드", paused: "일시정지" },
@@ -58,7 +59,8 @@ export const ko = {
     },
     presets: {
       title: "자주 쓸 버튼을 골라 보세요",
-      body: "고른 프리셋이 페이지로 추가돼요. 넘패드 / * 로 페이지를 넘겨요. 나중에 편집기에서 얼마든지 바꿀 수 있어요.",
+      body: (prev: string, next: string) =>
+        `고른 프리셋이 페이지로 추가돼요. 넘패드 ${prev} ${next} 로 페이지를 넘겨요. 나중에 편집기에서 얼마든지 바꿀 수 있어요.`,
       already: "이미 첫 페이지에 있어요",
       pinTitle: "트레이 아이콘을 작업 표시줄에 꺼내 두세요",
       pinBody:
@@ -77,6 +79,8 @@ export const ko = {
       wide: "가로 2칸",
       tall: "세로 2줄",
       blocked: "그 자리에는 다른 키가 있어요. 먼저 그 키를 옮겨 주세요.",
+      role: "이 키가 할 일",
+      roleHint: "다른 시스템 키와 역할을 맞바꿔요.",
       reset: "표준 배치로",
       done: "완료",
     },

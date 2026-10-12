@@ -15,6 +15,7 @@ import { emptyAction, incompleteReason, KIND_ICONS, suggestLabel } from "./actio
 import { IconPickerDialog } from "./IconPickerDialog";
 import { buttonIcon, Icon } from "@/shared/icons";
 import type { Selection } from "./KeyGrid";
+import { systemRole } from "@/shared/layout";
 
 interface Props {
   config: Config;
@@ -34,7 +35,7 @@ export function ButtonPanel({ config, page, selected, update }: Props) {
   if (selected.kind === "system") {
     return (
       <div className="space-y-2">
-        <h2 className="text-base font-semibold">{p.systemTitle(t.system[selected.key])}</h2>
+        <h2 className="text-base font-semibold">{p.systemTitle(t.system[systemRole(selected.key, config.systemKeys)])}</h2>
         <p className="text-sm text-muted-foreground">{p.systemBody}</p>
       </div>
     );

@@ -11,7 +11,7 @@ export function Osd({ payload }: { payload: OsdPayload }) {
   const t = useT();
   const { mode, error } = payload;
   const active = mode === "deck";
-  const grid = gridFor(payload.layout);
+  const grid = gridFor(payload.layout, payload.systemKeys);
   const [highlight, setHighlight] = useState<string | null>(null);
 
   // 새 알림(seq)마다 강조를 켜고 잠시 뒤 끈다. 실패 표시는 다음 알림까지 둔다.
@@ -116,7 +116,7 @@ function Cell({
         style={{ gridArea: slot.area }}
         className={`${base} items-center justify-center ${lit ? "bg-white/25" : "bg-white/5"}`}
       >
-        <span className="text-xs text-neutral-400">{t.system[slot.key]}</span>
+        <span className="text-xs text-neutral-400">{t.system[slot.role]}</span>
       </div>
     );
   }

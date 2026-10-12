@@ -6,7 +6,20 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
-import { gridFor, isStandard, LAYOUT_MAX, normalized, sameLayout, STANDARD_LAYOUT } from "@/shared/layout";
+import type { SystemKeys } from "@/bindings/SystemKeys";
+import {
+  DEFAULT_SYSTEM_KEYS,
+  gridFor,
+  isStandard,
+  LAYOUT_MAX,
+  normalized,
+  sameLayout,
+  STANDARD_LAYOUT,
+  SYSTEM_ROLES,
+  systemRole,
+  type SystemKey,
+  type SystemRole,
+} from "@/shared/layout";
 import { pauseDeckForwarding } from "./api";
 import { numpadLabel } from "./keymap";
 
@@ -45,7 +58,8 @@ function fits(places: KeyPlace[], key: string, x: number, y: number, w: number, 
  * 모양만 바뀌고 키가 하는 일은 그대로다. 넘패드 키를 누르면 그 키가 선택된다.
  */
 export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
-  const t = useT().editor.layout;
+  const dict = useT();
+  const t = dict.editor.layout;
   const saved = config.layout ?? STANDARD_LAYOUT;
   // 편집 중인 배치 (판 위 좌표). 열 때 판 가운데에 놓아 사방에 옮길 자리를 둔다.
   // 저장은 왼쪽 위로 붙여서 한다. 되돌리기 등으로 저장된 모양이 바뀌면 다시 가운데에 놓는다.
@@ -123,6 +137,19 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
   };
 
   const current = places.find((p) => p.key === selected) ?? null;
+  const systemKey = current && ["/", "*", "-", "."].includes(current.key) ? (current.key as SystemKey) : null;
+
+  /** 고른 시스템 키에 역할을 주고, 그 역할을 갖고 있던 키는 이 키의 역할을 받는다 */
+  const assignRole = (key: SystemKey, role: SystemRole) => {
+    const keys: SystemKeys = { ...(config.systemKeys ?? DEFAULT_SYSTEM_KEYS) };
+    const old = systemRole(key, keys);
+    keys[old] = keys[role];
+    keys[role] = key;
+    update((c) => {
+      if (SYSTEM_ROLES.every((r) => keys[r] === DEFAULT_SYSTEM_KEYS[r])) delete c.systemKeys;
+      else c.systemKeys = keys;
+    });
+  };
   const resize = (w: number, h: number) => {
     if (!current) return;
     if (!fits(places, current.key, current.x, current.y, w, h)) {
@@ -173,7 +200,14 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
                 )}
                 style={box(p.x, p.y, p)}
               >
-                {p.key === "NumLock" ? "Num" : p.key}
+                <span className="flex flex-col items-center leading-tight">
+                  {p.key === "NumLock" ? "Num" : p.key}
+                  {["/", "*", "-", "."].includes(p.key) && (
+                    <span className="text-[10px] font-normal opacity-70">
+                      {dict.system[systemRole(p.key as SystemKey, config.systemKeys)]}
+                    </span>
+                  )}
+                </span>
               </button>
             ))}
           </div>
@@ -182,6 +216,24 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
             {current ? (
               <>
                 <p className="font-medium">{t.selected(current.key === "NumLock" ? "NumLock" : current.key)}</p>
+                {systemKey && (
+                  <div className="space-y-1.5">
+                    <p className="text-muted-foreground">{t.role}</p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {SYSTEM_ROLES.map((r) => (
+                        <Button
+                          key={r}
+                          size="sm"
+                          variant={systemRole(systemKey, config.systemKeys) === r ? "default" : "outline"}
+                          onClick={() => assignRole(systemKey, r)}
+                        >
+                          {dict.system[r]}
+                        </Button>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground">{t.roleHint}</p>
+                  </div>
+                )}
                 <div className="flex flex-col gap-2">
                   <Button
                     variant={current.w === 2 ? "default" : "outline"}
@@ -208,10 +260,14 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
         <div className="flex justify-between">
           <Button
             variant="outline"
-            disabled={!config.layout}
+            disabled={!config.layout && !config.systemKeys}
             onClick={() => {
               setNotice(null);
-              commit(centered(STANDARD_LAYOUT));
+              setPlaces(centered(STANDARD_LAYOUT));
+              update((c) => {
+                delete c.layout;
+                delete c.systemKeys;
+              });
             }}
           >
             {t.reset}

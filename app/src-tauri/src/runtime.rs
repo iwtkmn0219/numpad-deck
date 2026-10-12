@@ -403,6 +403,22 @@ impl Runtime {
             .submit(tr("효과음 멈추기", "Stop sounds"), Action::StopSounds);
     }
 
+    pub fn config_path(&self) -> &std::path::Path {
+        &self.config_path
+    }
+
+    /// 설정 파일이 있는 폴더를 탐색기로 연다 (백업·공유용).
+    pub fn open_config_folder(&self) {
+        if let Some(dir) = self.config_path.parent() {
+            self.executor.submit(
+                tr("설정 폴더 열기", "Open config folder"),
+                Action::Open {
+                    target: dir.to_string_lossy().into_owned(),
+                },
+            );
+        }
+    }
+
     pub fn open_config(&self) {
         self.executor.submit(
             tr("설정 파일 열기", "Open config file"),

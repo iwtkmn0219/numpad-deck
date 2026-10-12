@@ -83,6 +83,17 @@ export const en: Dict = {
   editor: {
     windowTitle: "Numpad Deck Settings",
     help: "Show the tour again",
+    settings: {
+      button: "Settings",
+      title: "Settings",
+      configTitle: "Config file",
+      configBody: "All buttons, pages and the layout are saved in this one file. Copy the folder to back it up.",
+      openFile: "Open file",
+      openFolder: "Open folder",
+      aboutTitle: "About",
+      version: (v: string) => `Version ${v}`,
+      privacy: "Key presses are never stored or sent anywhere.",
+    },
     layout: {
       button: "Change key layout",
       title: "Match the on-screen numpad to your keyboard",

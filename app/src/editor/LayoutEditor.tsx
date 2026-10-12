@@ -198,13 +198,13 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
                 onPointerUp={() => onUp(p)}
                 className={cn(
                   "absolute flex touch-none items-center justify-center rounded-lg border text-sm font-medium select-none",
-                  p.key === selected
-                    ? "border-selection bg-selection text-white"
-                    : SYSTEM.includes(p.key)
-                      ? "border-key-edge text-muted-foreground hover:bg-white/50"
-                      : p.key === "NumLock"
-                        ? "border-dashed bg-muted/40 text-muted-foreground hover:bg-muted"
-                        : "bg-card hover:bg-muted",
+                  SYSTEM.includes(p.key)
+                    ? "border-key-edge text-muted-foreground hover:bg-white/50"
+                    : p.key === "NumLock"
+                      ? "border-dashed bg-muted/40 text-muted-foreground hover:bg-muted"
+                      : "bg-card hover:bg-muted",
+                  // 선택은 본 화면처럼 바깥 파란 테두리 (칸이 작아 간격은 1px 좁게)
+                  p.key === selected && "outline-2 outline-offset-2 outline-selection",
                   drag?.key === p.key ? "cursor-grabbing opacity-60" : "cursor-grab",
                 )}
                 style={box(p.x, p.y, p)}

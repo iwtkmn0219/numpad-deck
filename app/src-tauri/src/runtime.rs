@@ -40,6 +40,8 @@ struct State {
     recorder: Option<Recorder>,
     /// 마지막으로 안 마이크 상태(버튼으로 바꿨거나 감시 스레드가 읽음). 장치가 없으면 `None`.
     mic_muted: Option<bool>,
+    /// 마지막으로 배지에 보낸 순번
+    badge_seq: u64,
     /// 설치할 수 있는 새 버전. OSD 아래에 한 줄로 알린다 (OSD를 따로 띄우지는 않는다).
     update_available: Option<String>,
 }
@@ -67,6 +69,12 @@ impl State {
     /// 마이크 배지·트레이 점을 보여야 하는가.
     fn mic_badge(&self) -> bool {
         self.mic_muted == Some(true) && self.config.mic_indicator_active()
+    }
+
+    /// 배지에 보낼 (순번, 보임). 잠금 안에서 만들고, 순번으로 늦게 도착한 값을 거른다.
+    fn badge_effect(&mut self) -> (u64, bool) {
+        self.badge_seq += 1;
+        (self.badge_seq, self.mic_badge())
     }
 
     fn payload(&self, highlight: Option<NumpadKey>, error: Option<String>) -> Payload {
@@ -151,7 +159,8 @@ struct Effects {
     /// 언어가 바뀌었다 (창 제목·화면 문자열).
     lang: Option<Lang>,
     /// 마이크 배지를 보이거나 숨긴다 (바뀌었을 수 있을 때마다 보낸다).
-    mic_badge: Option<bool>,
+    /// (순번, 보임). 순번이 더 작은 것은 오래된 값이라 배지가 무시한다.
+    mic_badge: Option<(u64, bool)>,
 }
 
 /// 설정의 언어를 코어에 반영한다. 바뀌었으면 새 언어.
@@ -208,6 +217,7 @@ impl Runtime {
             last_button: None,
             recorder: None,
             mic_muted: None,
+            badge_seq: 0,
             update_available: None,
         }));
         let ui: Arc<Mutex<Ui>> = Arc::default();
@@ -233,7 +243,7 @@ impl Runtime {
                                         Effects {
                                             tray: Some(s.view()),
                                             osd_refresh: Some(s.payload(None, None)),
-                                            mic_badge: Some(s.mic_badge()),
+                                            mic_badge: Some(s.badge_effect()),
                                             ..Effects::default()
                                         }
                                     })
@@ -284,7 +294,7 @@ impl Runtime {
                         osd_refresh: changed.is_some().then(|| s.payload(None, None)),
                         config_changed: changed,
                         lang,
-                        mic_badge: Some(s.mic_badge()),
+                        mic_badge: Some(s.badge_effect()),
                         ..Effects::default()
                     }
                 };
@@ -341,10 +351,10 @@ impl Runtime {
             ui.app = Some(app);
         }
         let effects = {
-            let s = self.state.lock().unwrap();
+            let mut s = self.state.lock().unwrap();
             Effects {
                 tray: Some(s.view()),
-                mic_badge: Some(s.mic_badge()),
+                mic_badge: Some(s.badge_effect()),
                 ..Effects::default()
             }
         };
@@ -414,7 +424,7 @@ impl Runtime {
                 tray: Some(s.view()),
                 osd_refresh: Some(s.payload(None, None)),
                 lang,
-                mic_badge: Some(s.mic_badge()),
+                mic_badge: Some(s.badge_effect()),
                 ..Effects::default()
             }
         };
@@ -628,7 +638,7 @@ fn exec_loop(events: Receiver<ExecEvent>, state: &Mutex<State>, ui: &Mutex<Ui>) 
                 s.mic_muted = Some(muted);
                 Effects {
                     tray: Some(s.view()),
-                    mic_badge: Some(s.mic_badge()),
+                    mic_badge: Some(s.badge_effect()),
                     osd: Some((s.payload(s.last_button, None), Show::For(osd::BUTTON))),
                     ..Effects::default()
                 }
@@ -696,8 +706,8 @@ fn apply_inner(ui: &Mutex<Ui>, effects: Effects) {
             osd.show(payload, how);
         }
     }
-    if let (Some(badge), Some(visible)) = (mic_badge, effects.mic_badge) {
-        badge.set_visible(visible);
+    if let (Some(badge), Some((seq, visible))) = (mic_badge, effects.mic_badge) {
+        badge.set_visible(seq, visible);
     }
 }
 

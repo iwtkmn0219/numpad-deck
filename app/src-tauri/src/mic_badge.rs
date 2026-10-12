@@ -3,8 +3,12 @@
 //! OSD처럼 포커스를 뺏지 않고 클릭이 통과한다 (`osd.rs` 참고). 마이크 버튼이 없는
 //! 사용자에게 WebView 메모리를 쓰지 않도록 처음 보여야 할 때 창을 만들고, 그 뒤로는
 //! 숨기고 보이기만 한다. 글자는 화면이 `lang://changed`로 직접 바꾼다.
+//!
+//! 부르는 쪽이 메인 스레드일 수 있다 (편집기 저장 command). Windows에서 메인 스레드가
+//! 창을 만들면 교착하므로 창은 항상 따로 띄운 스레드에서 만들고, 만드는 동안 잠금을
+//! 쥐지 않는다.
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use tauri::{AppHandle, WebviewUrl, WebviewWindowBuilder};
 use windows::Win32::Foundation::{HWND, POINT, RECT};
@@ -21,43 +25,83 @@ const LABEL: &str = "mic-badge";
 /// 작업 영역 위에서 띄우는 거리 (물리 픽셀)
 const MARGIN: i32 = 12;
 
+#[derive(Default)]
+struct Inner {
+    /// 만든 창의 `HWND` (스레드 사이로 옮기려고 정수). 아직 안 만들었으면 `None`.
+    hwnd: Option<isize>,
+    /// 창을 만드는 스레드가 돌고 있다.
+    creating: bool,
+    /// 마지막으로 요청받은 보임 여부
+    wanted: bool,
+    /// 창에 실제로 반영한 보임 여부
+    applied: Option<bool>,
+    /// 마지막으로 받은 순번. 이보다 작거나 같은 요청은 오래된 것이라 무시한다.
+    seq: u64,
+}
+
 pub struct MicBadge {
     app: AppHandle,
-    /// 만든 창의 `HWND` (스레드 사이로 옮기려고 정수). 아직 안 만들었으면 `None`.
-    hwnd: Mutex<Option<isize>>,
+    inner: Arc<Mutex<Inner>>,
 }
 
 impl MicBadge {
     pub fn new(app: &AppHandle) -> MicBadge {
         MicBadge {
             app: app.clone(),
-            hwnd: Mutex::new(None),
+            inner: Arc::default(),
         }
     }
 
-    /// 보이거나 숨긴다. 처음 보일 때 창을 만든다 (메인 스레드를 기다리므로 상태 잠금을
-    /// 쥔 채 부르지 말 것 — `runtime::apply`에서만 부른다).
-    pub fn set_visible(&self, visible: bool) {
-        let mut slot = self.hwnd.lock().unwrap();
-        if slot.is_none() {
-            if !visible {
-                return;
-            }
-            match create(&self.app) {
-                Ok(h) => *slot = Some(h),
-                Err(e) => {
-                    eprintln!("마이크 배지 창을 만들 수 없습니다: {e}");
-                    return;
-                }
+    /// 보이거나 숨긴다. 어느 스레드에서 불러도 막히지 않는다: 처음 보일 때 창은 따로
+    /// 띄운 스레드가 만든다. `seq`가 더 큰 요청만 받아들인다.
+    pub fn set_visible(&self, seq: u64, visible: bool) {
+        let mut inner = self.inner.lock().unwrap();
+        if seq <= inner.seq {
+            return;
+        }
+        inner.seq = seq;
+        inner.wanted = visible;
+        if let Some(hwnd) = inner.hwnd {
+            sync(&mut inner, hwnd);
+        } else if visible && !inner.creating {
+            inner.creating = true;
+            drop(inner);
+            let app = self.app.clone();
+            let shared = Arc::clone(&self.inner);
+            let spawned = std::thread::Builder::new()
+                .name("deck-mic-badge".into())
+                .spawn(move || {
+                    let created = create(&app); // 잠금 없이
+                    let mut inner = shared.lock().unwrap();
+                    match created {
+                        Ok(hwnd) => {
+                            inner.hwnd = Some(hwnd);
+                            sync(&mut inner, hwnd);
+                        }
+                        Err(e) => {
+                            eprintln!("마이크 배지 창을 만들 수 없습니다: {e}");
+                            inner.creating = false;
+                        }
+                    }
+                });
+            if spawned.is_err() {
+                self.inner.lock().unwrap().creating = false;
             }
         }
-        let hwnd = slot.expect("위에서 만들었다");
-        if visible {
-            place_and_show(hwnd);
-        } else {
-            unsafe {
-                let _ = ShowWindowAsync(HWND(hwnd as *mut _), SW_HIDE);
-            }
+    }
+}
+
+/// 요청받은 상태와 창이 다르면 맞춘다 (비동기 호출이라 잠금 안에서 불러도 막히지 않는다).
+fn sync(inner: &mut Inner, hwnd: isize) {
+    if inner.applied == Some(inner.wanted) {
+        return;
+    }
+    inner.applied = Some(inner.wanted);
+    if inner.wanted {
+        place_and_show(hwnd);
+    } else {
+        unsafe {
+            let _ = ShowWindowAsync(HWND(hwnd as *mut _), SW_HIDE);
         }
     }
 }

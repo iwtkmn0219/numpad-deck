@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { CircleHelp, Globe, Redo2, Undo2 } from "lucide-react";
 import type { Config } from "@/bindings/Config";
+import type { Lang } from "@/bindings/Lang";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -16,6 +17,8 @@ import { installDeckKeyForwarding } from "./api";
 import { ButtonPanel } from "./ButtonPanel";
 import { KeyGrid, type Selection } from "./KeyGrid";
 import { Onboarding } from "./Onboarding";
+import { listPresets } from "./PresetDialog";
+import { relabel } from "./relabel";
 import { PageTabs } from "./PageTabs";
 import { useEditorConfig, type SaveStatus } from "./useEditorConfig";
 
@@ -92,11 +95,20 @@ export function Editor() {
 function LanguageMenu({ config, update }: { config: Config; update: (recipe: (draft: Config) => void) => void }) {
   const t = useT().editor.language;
   const value = config.language ?? "auto";
-  const choose = (v: string) =>
+  // 사용자가 직접 정하지 않은 페이지·버튼 이름도 새 언어로 바꾼다 (되돌리기 한 번에 함께 돌아감)
+  const choose = async (v: string) => {
+    const explicit = v === "ko" || v === "en" ? (v as Lang) : null;
+    const [to, ko, en] = await Promise.all([
+      explicit ?? invoke<Lang>("system_lang"),
+      listPresets("ko"),
+      listPresets("en"),
+    ]);
     update((c) => {
-      if (v === "ko" || v === "en") c.language = v;
+      if (explicit) c.language = explicit;
       else delete c.language;
+      relabel(c, to, { ko, en });
     });
+  };
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -106,7 +118,7 @@ function LanguageMenu({ config, update }: { config: Config; update: (recipe: (dr
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuLabel>{t.label}</DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={value} onValueChange={choose}>
+        <DropdownMenuRadioGroup value={value} onValueChange={(v) => void choose(v)}>
           <DropdownMenuRadioItem value="auto">{t.auto}</DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="ko">{t.ko}</DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="en">{t.en}</DropdownMenuRadioItem>

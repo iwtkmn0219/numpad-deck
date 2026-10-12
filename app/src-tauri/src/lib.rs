@@ -87,6 +87,12 @@ fn get_lang(runtime: State<'_, Arc<Runtime>>) -> Lang {
     runtime.lang()
 }
 
+/// Windows 표시 언어 (언어 메뉴의 "자동"이 될 언어).
+#[tauri::command]
+fn system_lang() -> Lang {
+    deck_core::i18n::system()
+}
+
 /// 지금 모드 (온보딩 ① NumLock 끄기).
 #[tauri::command]
 fn get_mode(runtime: State<'_, Arc<Runtime>>) -> tray::Mode {
@@ -126,6 +132,7 @@ pub fn run() {
             list_presets,
             get_mode,
             get_lang,
+            system_lang,
             onboarding_pending,
             finish_onboarding
         ])

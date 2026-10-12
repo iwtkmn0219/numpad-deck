@@ -8,7 +8,7 @@ import { ko, type Dict } from "./ko";
 // 언어는 코어가 정한다 (설정의 language, 없으면 Windows 표시 언어). 창마다 시작할 때 한 번
 // 묻고, 바뀌면 `lang://changed`를 받는다.
 
-const DICTS: Record<Lang, Dict> = { ko, en };
+export const DICTS: Record<Lang, Dict> = { ko, en };
 
 let current: Lang = navigator.language.toLowerCase().startsWith("ko") ? "ko" : "en";
 const subscribers = new Set<() => void>();

@@ -1,6 +1,6 @@
 [package]
 name = "numpad-deck"
-version = "0.4.1"
+version = "0.4.2"
 description = "NumLock이 꺼졌을 때 넘패드를 매크로 패드로 쓰게 해 주는 Windows 상주 앱"
 edition.workspace = true
 license.workspace = true

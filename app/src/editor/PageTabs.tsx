@@ -38,6 +38,9 @@ export function PageTabs({ config, page, onSelect, update }: Props) {
   const [renaming, setRenaming] = useState<number | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
   const [presetOpen, setPresetOpen] = useState(false);
+  /** 끌고 있는 탭과, 놓으면 들어갈 자리 표시 (그 탭의 앞/뒤) */
+  const [dragging, setDragging] = useState<number | null>(null);
+  const [dropAt, setDropAt] = useState<{ index: number; after: boolean } | null>(null);
   /** 메뉴가 열린 탭 (▾ 또는 오른쪽 클릭) */
   const [menuFor, setMenuFor] = useState<number | null>(null);
   const pages = config.pages;
@@ -76,14 +79,53 @@ export function PageTabs({ config, page, onSelect, update }: Props) {
 
   const target = deleting !== null ? pages[deleting] : null;
 
+  /** 끌어 놓기: 놓은 탭의 왼쪽 절반이면 앞, 오른쪽 절반이면 뒤로 */
+  const dragOver = (e: React.DragEvent, i: number) => {
+    if (dragging === null) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const rect = e.currentTarget.getBoundingClientRect();
+    const after = e.clientX > rect.left + rect.width / 2;
+    if (dropAt?.index !== i || dropAt.after !== after) setDropAt({ index: i, after });
+  };
+
+  const drop = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (dragging !== null && dropAt) {
+      let to = dropAt.after ? dropAt.index + 1 : dropAt.index;
+      if (dragging < to) to -= 1;
+      if (to !== dragging) move(dragging, to);
+    }
+    setDragging(null);
+    setDropAt(null);
+  };
+
   return (
     <div className="flex items-center gap-1 overflow-x-auto border-b px-4 pt-3">
       {pages.map((p, i) => (
         <div
           key={i}
+          draggable={renaming !== i}
+          onDragStart={(e) => {
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/plain", String(i));
+            setDragging(i);
+          }}
+          onDragOver={(e) => dragOver(e, i)}
+          onDrop={drop}
+          onDragEnd={() => {
+            setDragging(null);
+            setDropAt(null);
+          }}
+          style={
+            dropAt?.index === i && dragging !== null
+              ? { boxShadow: `${dropAt.after ? "inset -3px" : "inset 3px"} 0 0 #3b82f6` }
+              : undefined
+          }
           className={cn(
             "group flex shrink-0 items-center rounded-t-lg border border-b-0 text-sm",
             i === page ? "bg-background font-semibold" : "bg-muted/60 text-muted-foreground hover:bg-muted",
+            dragging === i && "opacity-50",
           )}
         >
           {renaming === i ? (

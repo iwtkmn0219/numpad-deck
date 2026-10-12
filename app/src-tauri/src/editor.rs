@@ -34,6 +34,9 @@ pub fn open(app: &AppHandle) {
         .min_inner_size(900.0, 620.0)
         .center()
         .additional_browser_args(BROWSER_ARGS)
+        // Windows에서 Tauri의 파일 끌어 놓기 처리가 켜져 있으면 화면 안의 끌어 놓기(페이지 탭
+        // 순서 바꾸기)가 동작하지 않는다. 파일 끌어 놓기는 쓰지 않는다.
+        .disable_drag_drop_handler()
         .build();
     if let Err(e) = built {
         eprintln!("편집기 창을 열 수 없습니다: {e}");

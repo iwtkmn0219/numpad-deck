@@ -214,15 +214,19 @@ function useTabDrag(count: number, onMove: (from: number, to: number) => void) {
   /** 끌기를 막 끝냈으면 뒤따르는 클릭(탭 고르기)을 무시한다 */
   const justDragged = useRef(false);
 
-  /** 끄는 탭 가운데가 지나간 다른 탭 수로 들어갈 자리를 정한다 */
+  /**
+   * 들어갈 자리: 끄는 방향 쪽 모서리가 다른 탭의 가운데를 지나면 그 탭과 자리를 바꾼다.
+   * (가운데로 재면 끄는 탭이 끝 탭보다 넓을 때 줄 끝에 막혀 끝 자리로 못 간다.)
+   */
   const targetIndex = (s: DragState) => {
     const r = s.rects[s.from];
-    const center = r.left + r.width / 2 + s.dx;
+    const left = r.left + s.dx;
+    const right = r.right + s.dx;
     let to = s.from;
     s.rects.forEach((o, j) => {
       const c = o.left + o.width / 2;
-      if (j > s.from && center > c) to = j;
-      if (j < s.from && center < c && to === s.from) to = j;
+      if (s.dx > 0 && j > s.from && right > c) to = j;
+      if (s.dx < 0 && j < s.from && left < c && to === s.from) to = j;
     });
     return to;
   };

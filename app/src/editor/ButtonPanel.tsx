@@ -179,7 +179,7 @@ function ButtonEditor({ stored, page, buttonKey, update }: EditorProps) {
 
             <div className="space-y-3">
               <div className="flex items-center gap-2">
-                {KindIcon && <KindIcon className="size-4 text-blue-600" />}
+                {KindIcon && <KindIcon className="size-4 text-selection" />}
                 <span className="text-sm font-medium">{t.editor.kinds[draft.action.type].title}</span>
                 <Button variant="ghost" size="xs" className="ml-auto" onClick={() => setPicking(true)}>
                   <Replace /> {p.changeAction}

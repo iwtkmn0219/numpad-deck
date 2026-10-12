@@ -39,6 +39,10 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  --color-key-edge: var(--key-edge);
+  --color-selection: var(--selection);
+  --color-selection-soft: var(--selection-soft);
+  --color-selection-foreground: var(--selection-foreground);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -49,24 +53,24 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --background: #f7f6f3;
+  --foreground: #1f1e1c;
+  --card: #ffffff;
+  --card-foreground: #1f1e1c;
+  --popover: #ffffff;
+  --popover-foreground: #1f1e1c;
+  --primary: #1f1e1c;
+  --primary-foreground: #ffffff;
+  --secondary: #edebe7;
+  --secondary-foreground: #1f1e1c;
+  --muted: #edebe7;
+  --muted-foreground: #67625b;
+  --accent: #edebe7;
+  --accent-foreground: #1f1e1c;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --border: #e4e1dc;
+  --input: #9a948b;
+  --ring: #2563eb;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -81,6 +85,11 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  /* 키캡 디자인: 키캡 아랫면·시스템 키 테두리, 선택 강조(파랑 하나) */
+  --key-edge: #d6d1c9;
+  --selection: #2563eb;
+  --selection-soft: #e8effd;
+  --selection-foreground: #1d4ed8;
 }
 
 .dark {
@@ -131,5 +140,37 @@
   html:lang(ko) body {
     word-break: keep-all;
     overflow-wrap: break-word;
+  }
+}
+/* 편집기 키캡: 아랫면(inset 그림자)이 있는 흰 키. 누르면 2px 내려간다. */
+@layer components {
+  .keycap {
+    background: var(--card);
+    border: 1px solid var(--border);
+    box-shadow:
+      inset 0 -3px 0 var(--key-edge),
+      0 1px 2px rgb(31 30 28 / 0.06);
+    transition:
+      transform 0.12s ease,
+      box-shadow 0.12s ease;
+  }
+  .keycap:hover {
+    box-shadow:
+      inset 0 -3px 0 var(--key-edge),
+      0 3px 8px rgb(31 30 28 / 0.08);
+  }
+  .keycap:active {
+    transform: translateY(2px);
+    box-shadow: inset 0 -1px 0 var(--key-edge);
+  }
+  /* 선택: 바깥 파란 테두리 (색만이 아니라 번호표 모양으로도 알린다 — KeyGrid) */
+  .key-selected {
+    outline: 2px solid var(--selection);
+    outline-offset: 3px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .keycap {
+      transition: none;
+    }
   }
 }

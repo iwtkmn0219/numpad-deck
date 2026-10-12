@@ -14,6 +14,7 @@ export const ko = {
     numlockOn: "켜짐",
     numlockOff: "꺼짐",
     numbersHint: "NumLock을 끄면 버튼을 쓸 수 있어요.",
+    ran: (label: string) => `${label} 실행`,
     update: (v: string) => `업데이트 ${v} 준비됨 · 트레이 메뉴에서 설치`,
   },
   onboarding: {
@@ -167,7 +168,7 @@ export const ko = {
     undo: "되돌리기",
     redo: "다시 실행",
     grid: {
-      empty: "비어 있음",
+      empty: "추가",
       systemHint: "모든 페이지에서 같은 시스템 키",
     },
     panel: {

@@ -15,6 +15,7 @@ export const en: Dict = {
     numlockOn: "on",
     numlockOff: "off",
     numbersHint: "Turn NumLock off to use the buttons.",
+    ran: (label: string) => `Ran ${label}`,
     update: (v: string) => `Update ${v} ready · install from the tray menu`,
   },
   onboarding: {
@@ -172,7 +173,7 @@ export const en: Dict = {
     undo: "Undo",
     redo: "Redo",
     grid: {
-      empty: "Empty",
+      empty: "Add",
       systemHint: "System key, the same on every page",
     },
     panel: {

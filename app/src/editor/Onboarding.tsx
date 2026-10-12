@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { Check, CircleAlert, Keyboard, LayoutGrid, Pin } from "lucide-react";
 import type { Config } from "@/bindings/Config";
 import type { Preset } from "@/bindings/Preset";
@@ -13,8 +12,7 @@ import { numpadLabel } from "./keymap";
 import { chooseLanguage, type LanguageChoice } from "./language";
 import { LayoutEditor } from "./LayoutEditor";
 import { listPresets, MiniGrid } from "./PresetDialog";
-
-type Mode = "deck" | "numbers" | "paused";
+import { useMode, type Mode } from "./useMode";
 
 interface Props {
   config: Config;
@@ -60,7 +58,7 @@ export function Onboarding({ config, update, onClose }: Props) {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
             {Array.from({ length: STEPS }, (_, i) => (
-              <span key={i} className={cn("h-1.5 w-8 rounded-full", i <= step ? "bg-blue-500" : "bg-muted")} />
+              <span key={i} className={cn("h-1.5 w-8 rounded-full", i <= step ? "bg-selection" : "bg-muted")} />
             ))}
             <span className="ml-2 text-xs text-muted-foreground">{t.step(step + 1, STEPS)}</span>
           </div>
@@ -100,30 +98,6 @@ export function Onboarding({ config, update, onClose }: Props) {
   );
 }
 
-/**
- * 지금 모드. 코어(훅의 NumLock 확인, 1초 주기)에서 받고, 이 화면이 받은 키의 NumLock 상태로
- * 바로 고친다 (편집기가 앞이면 훅이 키를 못 받아 늦을 수 있다).
- */
-function useMode(): Mode | null {
-  const [mode, setMode] = useState<Mode | null>(null);
-  useEffect(() => {
-    void invoke<Mode>("get_mode").then(setMode);
-    const unlisten = listen<Mode>("mode://changed", (e) => setMode(e.payload));
-    const onKey = (e: KeyboardEvent) => {
-      const on = e.getModifierState("NumLock");
-      setMode((m) => (m === "paused" ? m : on ? "numbers" : "deck"));
-    };
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("keyup", onKey);
-    return () => {
-      void unlisten.then((f) => f());
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("keyup", onKey);
-    };
-  }, []);
-  return mode;
-}
-
 /** ⓪ 언어. 고르면 바로 화면이 그 언어로 바뀐다. */
 function LanguageStep({ config, update }: { config: Config; update: (recipe: (draft: Config) => void) => void }) {
   const t = useT();
@@ -143,11 +117,11 @@ function LanguageStep({ config, update }: { config: Config; update: (recipe: (dr
             onClick={() => void chooseLanguage(v, update)}
             className={cn(
               "flex items-center justify-between rounded-xl border p-4 text-left font-medium",
-              value === v ? "border-blue-500 bg-blue-500/5" : "hover:bg-muted",
+              value === v ? "border-selection bg-selection-soft" : "hover:bg-muted",
             )}
           >
             {label}
-            {value === v && <Check className="size-5 text-blue-600" />}
+            {value === v && <Check className="size-5 text-selection" />}
           </button>
         ))}
       </div>
@@ -196,7 +170,7 @@ function NumLockStep({ mode }: { mode: Mode | null }) {
       <div
         className={cn(
           "flex items-center gap-4 rounded-xl border p-5",
-          off ? "border-blue-500/40 bg-blue-500/5" : "bg-card",
+          off ? "border-selection/40 bg-selection-soft" : "bg-card",
         )}
       >
         <span
@@ -213,7 +187,7 @@ function NumLockStep({ mode }: { mode: Mode | null }) {
           <p className="font-medium">{mode === "paused" ? t.paused : off ? t.off : t.on}</p>
           <p className="text-sm text-muted-foreground">{off ? t.done : t.keyHint}</p>
         </div>
-        {off && <Check className="ml-auto size-6 text-blue-600" />}
+        {off && <Check className="ml-auto size-6 text-selection" />}
       </div>
       <p className="text-sm text-muted-foreground">{t.arrowsNote}</p>
     </div>
@@ -250,7 +224,7 @@ function PressStep({ config, onNoResponse }: { config: Config; onNoResponse: () 
         <span
           className={cn(
             "flex size-20 shrink-0 flex-col justify-between rounded-lg border p-2 transition-colors",
-            state.kind === "done" ? "border-blue-500 bg-blue-500 text-white" : "bg-background",
+            state.kind === "done" ? "border-selection bg-selection text-white" : "bg-card",
           )}
         >
           <span className="flex items-start justify-between text-xs">
@@ -259,7 +233,7 @@ function PressStep({ config, onNoResponse }: { config: Config; onNoResponse: () 
           </span>
           <span className="truncate text-xs font-medium">{button?.label}</span>
         </span>
-        <p className={cn("text-sm", state.kind === "done" ? "font-medium text-blue-700" : "text-muted-foreground")}>
+        <p className={cn("text-sm", state.kind === "done" ? "font-medium text-selection-foreground" : "text-muted-foreground")}>
           {state.kind === "done" && <Check className="mr-1 inline size-4" />}
           {state.kind === "waiting" && t.waiting}
           {state.kind === "done" && t.done}
@@ -307,7 +281,7 @@ function KeyCheck({ onClose }: { onClose: () => void }) {
         {seen.length === 0 && <li className="p-2 text-muted-foreground">{t.empty}</li>}
         {seen.map((s) => (
           <li key={s.id} className="flex items-center gap-2 rounded-md px-2 py-1">
-            {s.ok ? <Check className="size-4 text-blue-600" /> : <CircleAlert className="size-4 text-amber-600" />}
+            {s.ok ? <Check className="size-4 text-selection" /> : <CircleAlert className="size-4 text-amber-600" />}
             {s.text}
           </li>
         ))}
@@ -362,13 +336,13 @@ function PresetStep({
               onClick={() => toggle(p.id)}
               className={cn(
                 "flex items-start gap-3 rounded-xl border p-3 text-left disabled:opacity-60",
-                on ? "border-blue-500 bg-blue-500/5" : "hover:bg-muted",
+                on ? "border-selection bg-selection-soft" : "hover:bg-muted",
               )}
             >
               <span
                 className={cn(
                   "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded border",
-                  (on || already) && "border-blue-500 bg-blue-500 text-white",
+                  (on || already) && "border-selection bg-selection text-white",
                 )}
               >
                 {(on || already) && <Check className="size-3.5" />}
@@ -384,7 +358,7 @@ function PresetStep({
         })}
       </div>
       <div className="flex gap-3 rounded-xl border bg-muted/40 p-4">
-        <Pin className="mt-0.5 size-5 shrink-0 text-blue-600" />
+        <Pin className="mt-0.5 size-5 shrink-0 text-selection" />
         <div className="space-y-1">
           <p className="font-medium">{t.pinTitle}</p>
           <p className="text-sm text-muted-foreground">{t.pinBody}</p>

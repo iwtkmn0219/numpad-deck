@@ -61,7 +61,7 @@ export function PresetDialog({ open, onOpenChange, onAdd, layout, systemKeys }: 
                   onClick={() => setSelected(i)}
                   className={cn(
                     "w-full rounded-lg px-3 py-2 text-left text-sm",
-                    i === selected ? "bg-blue-500/10 font-medium text-blue-700" : "hover:bg-muted",
+                    i === selected ? "bg-selection-soft font-medium text-selection-foreground" : "hover:bg-muted",
                   )}
                 >
                   {p.name}

@@ -23,6 +23,9 @@ import {
 import { pauseDeckForwarding } from "./api";
 import { numpadLabel } from "./keymap";
 
+/** 켜진 선택 버튼(역할·가로 2칸·세로 2줄): 파란 칩. 차콜로 채운 주 버튼은 "완료" 하나만. */
+const ON = "border-selection bg-selection-soft text-selection-foreground hover:bg-selection-soft";
+
 /** 시스템 키 (역할을 맞바꿀 수 있는 네 키) */
 const SYSTEM: string[] = ["/", "*", "-", "."];
 
@@ -173,10 +176,14 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
         <div className="flex gap-5">
           <div
             ref={canvas}
-            className="relative shrink-0 rounded-lg bg-[radial-gradient(circle,var(--color-border)_1.5px,transparent_1.5px)]"
+            className="relative shrink-0 rounded-xl bg-muted"
             style={{
               width: LAYOUT_MAX * STEP - GAP,
               height: LAYOUT_MAX * STEP - GAP,
+              // 점 격자: 평소엔 키보다 옅게(키캡 아랫면 색), 끄는 동안만 또렷하게(입력란 테두리 색 60%)
+              backgroundImage: `radial-gradient(circle, ${
+                drag ? "color-mix(in srgb, var(--color-input) 60%, transparent)" : "var(--color-key-edge)"
+              } 1.5px, transparent 1.5px)`,
               backgroundSize: `${STEP}px ${STEP}px`,
               backgroundPosition: `${CELL / 2}px ${CELL / 2}px`,
             }}
@@ -185,7 +192,7 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
               <div
                 className={cn(
                   "pointer-events-none absolute rounded-lg border-2 border-dashed",
-                  drag.ok ? "border-blue-500 bg-blue-500/10" : "border-red-500 bg-red-500/10",
+                  drag.ok ? "border-selection bg-selection-soft" : "border-red-500 bg-red-500/10",
                 )}
                 style={box(drag.x, drag.y, places.find((p) => p.key === drag.key)!)}
               />
@@ -198,13 +205,13 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
                 onPointerUp={() => onUp(p)}
                 className={cn(
                   "absolute flex touch-none items-center justify-center rounded-lg border text-sm font-medium select-none",
-                  p.key === selected
-                    ? "border-blue-500 bg-blue-500 text-white"
-                    : SYSTEM.includes(p.key)
-                      ? "border-amber-500/50 bg-amber-500/15 text-amber-900 hover:bg-amber-500/25 dark:text-amber-200"
-                      : p.key === "NumLock"
-                        ? "border-dashed bg-muted/40 text-muted-foreground hover:bg-muted"
-                        : "bg-card hover:bg-muted",
+                  SYSTEM.includes(p.key)
+                    ? "border-key-edge text-muted-foreground hover:bg-white/50"
+                    : p.key === "NumLock"
+                      ? "border-dashed bg-muted/40 text-muted-foreground hover:bg-muted"
+                      : "bg-card shadow-[inset_0_-2px_0_var(--key-edge)] hover:shadow-[inset_0_-2px_0_var(--key-edge),0_2px_6px_rgb(31_30_28/0.08)]",
+                  // 선택은 본 화면처럼 바깥 파란 테두리 (칸이 작아 간격은 1px 좁게)
+                  p.key === selected && "outline-2 outline-offset-2 outline-selection",
                   drag?.key === p.key ? "cursor-grabbing opacity-60" : "cursor-grab",
                 )}
                 style={box(p.x, p.y, p)}
@@ -225,7 +232,7 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
             <ul className="space-y-2 text-xs">
               {[
                 ["border bg-card", t.legendButton],
-                ["border border-amber-500/50 bg-amber-500/15", t.legendSystem],
+                ["border border-key-edge", t.legendSystem],
               ].map(([swatch, [title, body]]) => (
                 <li key={title} className="flex items-start gap-2">
                   <span className={cn("mt-0.5 size-3.5 shrink-0 rounded", swatch)} />
@@ -247,7 +254,9 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
                         <Button
                           key={r}
                           size="sm"
-                          variant={systemRole(systemKey, config.systemKeys) === r ? "default" : "outline"}
+                          variant="outline"
+                          aria-pressed={systemRole(systemKey, config.systemKeys) === r}
+                          className={cn(systemRole(systemKey, config.systemKeys) === r && ON)}
                           onClick={() => assignRole(systemKey, r)}
                         >
                           {dict.system[r]}
@@ -259,14 +268,18 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
                 )}
                 <div className="flex flex-col gap-2">
                   <Button
-                    variant={current.w === 2 ? "default" : "outline"}
+                    variant="outline"
+                    aria-pressed={current.w === 2}
+                    className={cn(current.w === 2 && ON)}
                     size="sm"
                     onClick={() => resize(current.w === 2 ? 1 : 2, current.h)}
                   >
                     {t.wide}
                   </Button>
                   <Button
-                    variant={current.h === 2 ? "default" : "outline"}
+                    variant="outline"
+                    aria-pressed={current.h === 2}
+                    className={cn(current.h === 2 && ON)}
                     size="sm"
                     onClick={() => resize(current.w, current.h === 2 ? 1 : 2)}
                   >

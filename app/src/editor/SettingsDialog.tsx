@@ -38,6 +38,8 @@ interface Props {
 function useUpdate(): [UpdateState | null, (s: UpdateState) => void] {
   const [update, setUpdate] = useState<UpdateState | null>(null);
   useEffect(() => {
+    // 창을 열기 전에 이미 찾은 업데이트도 보이게 처음에 한 번 묻고, 그 뒤로는 바뀔 때 받는다
+    void invoke<UpdateState>("get_update").then(setUpdate);
     const unlisten = listen<UpdateState>("update://changed", (e) => setUpdate(e.payload));
     return () => void unlisten.then((f) => f());
   }, []);

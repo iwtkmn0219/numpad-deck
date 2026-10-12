@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 현재 상태
 
-**2단계 완료, M2 통과(2026-10-10). 3단계 진행 중(계획 `docs/stage3-plan.md`, 검증 `docs/m3-checklist.md`): 3-1 편집기 뼈대 완료(수동 검증 통과), 3-2 액션 편집 완료(수동 검증 통과), 3-3 아이콘 완료(수동 검증 통과), 3-4 프리셋 완료(수동 검증 통과, OBS는 미확인), 3-5 온보딩 완료(수동 검증 통과), 3-6 한국어·영어 구현(수동 검증 대기).** 1단계는 M1 통과(2026-10-09). Cargo 워크스페이스에 `core/` 크레이트(`numpad-deck-core`, lib 이름 `deck_core`)와 `app/src-tauri`(Tauri 2 앱 `numpad-deck`)가 있다. 앱은 트레이와 OSD 창 하나로 이뤄진다. 프런트엔드는 Vite 다중 진입점: `osd.html`(OSD), `index.html`(설정 편집기 자리, 3단계). 기획 근거는 `Numpad Deck 프로젝트 제안서.md`, M1 수동 검증 항목과 결과는 `docs/m1-checklist.md`, 2단계 계획(설정 스키마·액션 명세·OSD 동작 결정)은 `docs/stage2-plan.md`, 액션 수동 검증은 `docs/m2-checklist.md`(시험용 설정 `docs/m2-test-config.json`).
+**2단계 완료, M2 통과(2026-10-10). 3단계 진행 중(계획 `docs/stage3-plan.md`, 검증 `docs/m3-checklist.md`): 3-1 편집기 뼈대 완료(수동 검증 통과), 3-2 액션 편집 완료(수동 검증 통과), 3-3 아이콘 완료(수동 검증 통과), 3-4 프리셋 완료(수동 검증 통과, OBS는 미확인), 3-5 온보딩 완료(수동 검증 통과), 3-6 한국어·영어 완료(수동 검증 통과, 영어 Windows 첫 실행은 미확인). 다음은 M3 테스터 시험.** 1단계는 M1 통과(2026-10-09). Cargo 워크스페이스에 `core/` 크레이트(`numpad-deck-core`, lib 이름 `deck_core`)와 `app/src-tauri`(Tauri 2 앱 `numpad-deck`)가 있다. 앱은 트레이와 OSD 창 하나로 이뤄진다. 프런트엔드는 Vite 다중 진입점: `osd.html`(OSD), `index.html`(설정 편집기 자리, 3단계). 기획 근거는 `Numpad Deck 프로젝트 제안서.md`, M1 수동 검증 항목과 결과는 `docs/m1-checklist.md`, 2단계 계획(설정 스키마·액션 명세·OSD 동작 결정)은 `docs/stage2-plan.md`, 액션 수동 검증은 `docs/m2-checklist.md`(시험용 설정 `docs/m2-test-config.json`).
 
 개념 검증용 AutoHotkey v2 프로토타입이 `~/Downloads/numpad-deck.ahk`에 있다(저장소 밖). 키 배치·페이지 전환·클릭 통과 OSD의 참고 구현이다.
 

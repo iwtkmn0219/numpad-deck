@@ -201,7 +201,7 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
                   p.key === selected
                     ? "border-selection bg-selection text-white"
                     : SYSTEM.includes(p.key)
-                      ? "border-amber-500/50 bg-amber-500/15 text-amber-900 hover:bg-amber-500/25 dark:text-amber-200"
+                      ? "border-key-edge text-muted-foreground hover:bg-white/50"
                       : p.key === "NumLock"
                         ? "border-dashed bg-muted/40 text-muted-foreground hover:bg-muted"
                         : "bg-card hover:bg-muted",
@@ -225,7 +225,7 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
             <ul className="space-y-2 text-xs">
               {[
                 ["border bg-card", t.legendButton],
-                ["border border-amber-500/50 bg-amber-500/15", t.legendSystem],
+                ["border border-key-edge", t.legendSystem],
               ].map(([swatch, [title, body]]) => (
                 <li key={title} className="flex items-start gap-2">
                   <span className={cn("mt-0.5 size-3.5 shrink-0 rounded", swatch)} />

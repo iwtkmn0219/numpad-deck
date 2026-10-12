@@ -176,10 +176,14 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
         <div className="flex gap-5">
           <div
             ref={canvas}
-            className="relative shrink-0 rounded-xl bg-muted bg-[radial-gradient(circle,#b5aea3_2px,transparent_2px)]"
+            className="relative shrink-0 rounded-xl bg-muted"
             style={{
               width: LAYOUT_MAX * STEP - GAP,
               height: LAYOUT_MAX * STEP - GAP,
+              // 점 격자: 평소엔 키보다 옅게(키캡 아랫면 색), 끄는 동안만 또렷하게(입력란 테두리 색 60%)
+              backgroundImage: `radial-gradient(circle, ${
+                drag ? "color-mix(in srgb, var(--color-input) 60%, transparent)" : "var(--color-key-edge)"
+              } 1.5px, transparent 1.5px)`,
               backgroundSize: `${STEP}px ${STEP}px`,
               backgroundPosition: `${CELL / 2}px ${CELL / 2}px`,
             }}

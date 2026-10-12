@@ -125,6 +125,8 @@ struct Effects {
     osd: Option<(Payload, Show)>,
     /// 편집기가 열려 있으면 보낸다.
     config_changed: Option<Config>,
+    /// 띄우지 않고 OSD 내용만 바꾼다 (설정이 바뀌었을 때).
+    osd_refresh: Option<Payload>,
 }
 
 /// 트레이와 OSD. 메인 스레드에서 만든 뒤 붙인다. 갱신할 때는 복제해 꺼내고 잠금을
@@ -196,6 +198,7 @@ impl Runtime {
                     };
                     Effects {
                         tray: Some(s.view()),
+                        osd_refresh: changed.is_some().then(|| s.payload(None, None)),
                         config_changed: changed,
                         ..Effects::default()
                     }
@@ -269,6 +272,7 @@ impl Runtime {
             s.config_error = None;
             Effects {
                 tray: Some(s.view()),
+                osd_refresh: Some(s.payload(None, None)),
                 ..Effects::default()
             }
         };
@@ -478,8 +482,13 @@ fn apply_inner(ui: &Mutex<Ui>, effects: Effects) {
     if let (Some(tray), Some(view)) = (tray, effects.tray) {
         tray.update(&view);
     }
-    if let (Some(osd), Some((payload, how))) = (osd, effects.osd) {
-        osd.show(payload, how);
+    if let Some(osd) = osd {
+        if let Some(payload) = effects.osd_refresh {
+            osd.refresh(payload);
+        }
+        if let Some((payload, how)) = effects.osd {
+            osd.show(payload, how);
+        }
     }
 }
 

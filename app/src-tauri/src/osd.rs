@@ -114,6 +114,13 @@ impl Osd {
         })
     }
 
+    /// 보이는지와 상관없이 내용만 바꾼다 (설정이 바뀌었을 때). 숨어 있으면 영향이 없고,
+    /// `-`로 고정해 띄워 둔 OSD에는 바로 반영된다.
+    pub fn refresh(&self, mut payload: Payload) {
+        payload.seq = self.seq.fetch_add(1, Ordering::Relaxed) + 1;
+        let _ = self.app.emit_to(LABEL, EVENT, payload);
+    }
+
     pub fn show(&self, mut payload: Payload, how: Show) {
         let duration = match how {
             Show::Toggle => {

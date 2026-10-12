@@ -18,6 +18,9 @@ export const en: Dict = {
     ran: (label: string) => `Ran ${label}`,
     update: (v: string) => `Update ${v} ready · install from the tray menu`,
   },
+  micBadge: {
+    muted: "Mic muted",
+  },
   onboarding: {
     step: (n: number, total: number) => `${n} / ${total}`,
     language: {

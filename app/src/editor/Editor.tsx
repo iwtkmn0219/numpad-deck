@@ -105,7 +105,7 @@ function LanguageMenu({ config, update }: { config: Config; update: (recipe: (dr
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon-sm" title={t.label}>
+        <Button variant="ghost" size="icon-sm" title={t.label} className="active:translate-y-px">
           <Globe />
         </Button>
       </DropdownMenuTrigger>

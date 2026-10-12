@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 현재 상태
 
-**2단계 완료, M2 통과(2026-10-10). 3단계 진행 중(계획 `docs/stage3-plan.md`, 검증 `docs/m3-checklist.md`): 3-1 편집기 뼈대 완료(수동 검증 통과), 3-2 액션 편집 완료(수동 검증 통과), 3-3 아이콘 완료(수동 검증 통과). 다음은 3-4 프리셋.** 1단계는 M1 통과(2026-10-09). Cargo 워크스페이스에 `core/` 크레이트(`numpad-deck-core`, lib 이름 `deck_core`)와 `app/src-tauri`(Tauri 2 앱 `numpad-deck`)가 있다. 앱은 트레이와 OSD 창 하나로 이뤄진다. 프런트엔드는 Vite 다중 진입점: `osd.html`(OSD), `index.html`(설정 편집기 자리, 3단계). 기획 근거는 `Numpad Deck 프로젝트 제안서.md`, M1 수동 검증 항목과 결과는 `docs/m1-checklist.md`, 2단계 계획(설정 스키마·액션 명세·OSD 동작 결정)은 `docs/stage2-plan.md`, 액션 수동 검증은 `docs/m2-checklist.md`(시험용 설정 `docs/m2-test-config.json`).
+**2단계 완료, M2 통과(2026-10-10). 3단계 진행 중(계획 `docs/stage3-plan.md`, 검증 `docs/m3-checklist.md`): 3-1 편집기 뼈대 완료(수동 검증 통과), 3-2 액션 편집 완료(수동 검증 통과), 3-3 아이콘 완료(수동 검증 통과), 3-4 프리셋 구현(수동 검증 대기).** 1단계는 M1 통과(2026-10-09). Cargo 워크스페이스에 `core/` 크레이트(`numpad-deck-core`, lib 이름 `deck_core`)와 `app/src-tauri`(Tauri 2 앱 `numpad-deck`)가 있다. 앱은 트레이와 OSD 창 하나로 이뤄진다. 프런트엔드는 Vite 다중 진입점: `osd.html`(OSD), `index.html`(설정 편집기 자리, 3단계). 기획 근거는 `Numpad Deck 프로젝트 제안서.md`, M1 수동 검증 항목과 결과는 `docs/m1-checklist.md`, 2단계 계획(설정 스키마·액션 명세·OSD 동작 결정)은 `docs/stage2-plan.md`, 액션 수동 검증은 `docs/m2-checklist.md`(시험용 설정 `docs/m2-test-config.json`).
 
 개념 검증용 AutoHotkey v2 프로토타입이 `~/Downloads/numpad-deck.ahk`에 있다(저장소 밖). 키 배치·페이지 전환·클릭 통과 OSD의 참고 구현이다.
 
@@ -13,9 +13,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `key.rs`: VK + 확장 플래그 → `NumpadKey`. NumLock ON 형태(`VK_NUMPAD7`)와 OFF 형태(`VK_HOME`)를 같은 키로 식별한다(키 다운/업 짝짓기용). Windows 의존 없음.
 - `gate.rs`: 다운/업 판정(`Pass`/`Swallow`/`Fire`), 자동 반복 억제, 키 업 놓침 복구. Windows 의존 없음.
 - `layout.rs`: v1.0 고정 키 배치.
-- `config.rs`: 설정 JSON 스키마(`Config`/`Page`/`Button`/`Action`), 검증, 원자적 저장, 폴더 감시로 즉시 반영. 기본 설정은 `default_config.json`(`include_str!`). 경로는 `%APPDATA%\NumpadDeck\config.json`.
+- `config.rs`: 설정 JSON 스키마(`Config`/`Page`/`Button`/`Action`), 검증, 원자적 저장, 폴더 감시로 즉시 반영. 기본 설정은 `presets::default_config`(음악·영상 프리셋 한 페이지). 경로는 `%APPDATA%\NumpadDeck\config.json`.
 - `deck.rs`: 현재 페이지와 디스패처. 넘패드 키 → `Dispatch`(버튼/페이지/OSD 토글). 페이지 키는 끝에서 반대쪽으로 돈다. 설정이 바뀌어 페이지가 줄면 마지막 페이지로 옮긴다. Windows 의존 없음.
 - `record.rs`: 단축키 녹화. 녹화 모드에서 훅이 보낸 키 이벤트 → 이름 배열(보조 키 순서 Ctrl·Shift·Alt·Win, 좌우 구분 없음, Esc 취소, 넘패드·이름 없는 키 거부). Windows 의존 없음.
+- `presets.rs` + `presets/*.json`: 프리셋 6개(음악·영상, 창 관리·업무, Zoom, Teams, Meet, OBS — OBS는 키보드에 없는 F13–F22). 이름·버튼 이름은 `{ko, en}`, `Lang`으로 골라 `Page`를 만든다. 첫 실행 기본 설정·편집기·온보딩이 같이 쓴다.
 - `keys.rs`: 단축키 키 이름(`"Ctrl"`, `"Win"`, `"F5"` …) ↔ VK·확장 플래그. 설정 검증과 (3단계) 단축키 녹화가 쓴다. Windows 의존 없음.
 - `hook.rs`: 훅 전용 스레드(**창을 두지 않는다**: 창이 있으면 이 앱 창이 앞일 때 IME/TSF가 끼어 훅이 키를 못 받는다 — 3-2 실측), 주기적·세션 잠금 해제·절전 복귀 때 재설치(알림은 별도 스레드의 숨은 창이 받아 전달), NumLock 상태 변화 알림, 일시정지, **녹화 모드**(주입 아닌 모든 키를 막고 `Recorded`로 보냄, 5초 무입력이면 훅이 스스로 끝냄 — 키보드 먹통 방지), `mpsc` 채널로 `HookEvent` 전달.
 - `inject.rs`: `dwExtraInfo` 서명(`SIGNATURE`)을 붙인 `SendInput`. 단축키·유니코드 텍스트 주입 전에 사용자가 누르고 있는 보조 키를 뗀다(다시 누르지는 않는다: 끼임 방지). Alt·Win을 뗄 때는 마스크 키 `0xE8`을 끼운다.

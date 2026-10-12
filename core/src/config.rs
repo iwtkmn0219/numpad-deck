@@ -54,6 +54,15 @@ pub struct Config {
     )]
     #[ts(optional)]
     pub system_keys: Option<SystemKeys>,
+    /// 마이크가 꺼져 있는 동안 화면 위에 배지·트레이에 빨간 점을 보인다. 없으면 켬.
+    /// 마이크 버튼(`micMute`)이 하나도 없으면 켜 둬도 보이지 않는다.
+    #[serde(
+        rename = "micIndicator",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional)]
+    pub mic_indicator: Option<bool>,
     pub pages: Vec<Page>,
 }
 
@@ -434,6 +443,26 @@ impl Config {
     pub fn button(&self, page: usize, key: NumpadKey) -> Option<&Button> {
         let key = ButtonKey::new(key)?;
         self.pages.get(page)?.buttons.get(&key)
+    }
+
+    /// 어느 페이지에든(묶음 안 포함) 마이크 음소거 버튼이 있는가.
+    pub fn uses_mic_mute(&self) -> bool {
+        fn has(action: &Action) -> bool {
+            match action {
+                Action::MicMute => true,
+                Action::Sequence { steps } => steps.iter().any(has),
+                _ => false,
+            }
+        }
+        self.pages
+            .iter()
+            .flat_map(|p| p.buttons.values())
+            .any(|b| has(&b.action))
+    }
+
+    /// 마이크 상시 표시를 켤 조건: 끄지 않았고 마이크 버튼이 있다.
+    pub fn mic_indicator_active(&self) -> bool {
+        self.mic_indicator != Some(false) && self.uses_mic_mute()
     }
 
     fn validate(&self) -> Result<(), String> {
@@ -872,6 +901,40 @@ mod tests {
             "/": {"label":"x","action":{"type":"micMute"}}}}]}"#;
         let err = parse(text).unwrap_err().to_string();
         assert!(err.contains("\"/\""), "{err}");
+    }
+
+    #[test]
+    fn mic_indicator_needs_a_mic_button_and_can_be_turned_off() {
+        let none = r#"{"version":1,"pages":[{"name":"p","buttons":{
+            "7": {"label":"x","action":{"type":"text","text":"a"}}}}]}"#;
+        let config = parse(none).unwrap();
+        assert!(!config.uses_mic_mute());
+        assert!(!config.mic_indicator_active());
+
+        let mic = r#"{"version":1,"pages":[{"name":"p"},{"name":"q","buttons":{
+            "1": {"label":"m","action":{"type":"micMute"}}}}]}"#;
+        let mut config = parse(mic).unwrap();
+        assert!(config.mic_indicator_active());
+        // 꺼 두면 파일에 적히고 다시 읽어도 꺼져 있다
+        config.mic_indicator = Some(false);
+        assert!(!config.mic_indicator_active());
+        let text = serde_json::to_string(&config).unwrap();
+        assert!(text.contains(r#""micIndicator":false"#));
+        assert_eq!(parse(&text).unwrap().mic_indicator, Some(false));
+        // 기본(없음)은 파일에 적지 않는다
+        config.mic_indicator = None;
+        assert!(!serde_json::to_string(&config)
+            .unwrap()
+            .contains("micIndicator"));
+    }
+
+    #[test]
+    fn mic_mute_inside_sequence_counts() {
+        let text = r#"{"version":1,"pages":[{"name":"p","buttons":{
+            "7": {"label":"x","action":{"type":"sequence","steps":[
+                {"type":"hotkey","keys":["Win","D"]},
+                {"type":"micMute"}]}}}}]}"#;
+        assert!(parse(text).unwrap().uses_mic_mute());
     }
 
     #[test]

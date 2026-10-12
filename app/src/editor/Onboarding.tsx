@@ -20,7 +20,7 @@ interface Props {
 }
 
 /**
- * 첫 실행 안내 3단계: ① NumLock 끄기 ② 넘패드 8 눌러 보기 ③ 프리셋 고르기 + 트레이 아이콘 고정.
+ * 첫 실행 안내 3단계: ① NumLock 끄기 ② 넘패드 1 눌러 보기(음악·영상 프리셋의 YouTube — 눈에 보이는 결과) ③ 프리셋 고르기 + 트레이 아이콘 고정.
  * 편집기 창이 앞이면 키가 저수준 훅을 거치지 않으므로, NumLock·넘패드 키는 이 화면이 받은
  * 키로 판단한다 (덱 버튼 실행은 편집기의 `installDeckKeyForwarding`이 맡는다).
  */
@@ -154,17 +154,20 @@ function NumLockStep({ mode }: { mode: Mode | null }) {
   );
 }
 
+/** ② 단계에서 눌러 볼 키. 첫 실행 설정(음악·영상)에서 YouTube 열기다. */
+const TRY_KEY = "1";
+
 type PressState = { kind: "waiting" } | { kind: "done" } | { kind: "numlockOn" } | { kind: "other"; key: string };
 
 function PressStep({ config, onNoResponse }: { config: Config; onNoResponse: () => void }) {
   const t = useT().onboarding.press;
   const [state, setState] = useState<PressState>({ kind: "waiting" });
-  const button = config.pages[0]?.buttons["8"] ?? null;
+  const button = config.pages[0]?.buttons[TRY_KEY] ?? null;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat || e.code === "NumLock") return;
-      if (numpadLabel(e.code) === "8") {
+      if (numpadLabel(e.code) === TRY_KEY) {
         setState(e.getModifierState("NumLock") ? { kind: "numlockOn" } : { kind: "done" });
       } else {
         setState((s) => (s.kind === "done" ? s : { kind: "other", key: e.code || e.key }));
@@ -185,7 +188,8 @@ function PressStep({ config, onNoResponse }: { config: Config; onNoResponse: () 
           )}
         >
           <span className="flex items-start justify-between text-xs">
-            8{button && <Icon name={buttonIcon(button)} className="size-5" />}
+            {TRY_KEY}
+            {button && <Icon name={buttonIcon(button)} className="size-5" />}
           </span>
           <span className="truncate text-xs font-medium">{button?.label}</span>
         </span>

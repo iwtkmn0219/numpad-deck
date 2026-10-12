@@ -57,6 +57,8 @@ pub struct Payload {
     pub error: Option<String>,
     /// 마이크 음소거 버튼으로 마지막에 바꾼 상태 (아직 안 눌렀으면 없음)
     pub mic_muted: Option<bool>,
+    /// 설치할 수 있는 새 버전 (없으면 없음)
+    pub update: Option<String>,
     /// 화면에 그릴 넘패드 모양 (없으면 표준)
     pub layout: Option<Vec<deck_core::config::KeyPlace>>,
     /// 시스템 키 역할 (없으면 기본)

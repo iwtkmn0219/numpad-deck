@@ -34,17 +34,43 @@ interface Props {
   onOpenChange: (open: boolean) => void;
 }
 
+/** 업데이트 상태 (설정 창·편집기 띠가 같이 쓴다). */
+function useUpdate(): [UpdateState | null, (s: UpdateState) => void] {
+  const [update, setUpdate] = useState<UpdateState | null>(null);
+  useEffect(() => {
+    const unlisten = listen<UpdateState>("update://changed", (e) => setUpdate(e.payload));
+    return () => void unlisten.then((f) => f());
+  }, []);
+  return [update, setUpdate];
+}
+
+/** 편집기 위쪽 띠: 새 버전이 있으면 바로 설치할 수 있게. */
+export function UpdateBanner() {
+  const t = useT().editor.settings;
+  const [update, setUpdate] = useUpdate();
+  const s = update?.status;
+  if (!s || (s.kind !== "available" && s.kind !== "installing")) return null;
+  return (
+    <div className="mx-5 mt-3 flex items-center justify-between gap-3 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-sm">
+      <span className="flex items-center gap-2">
+        <Download className="size-4 text-sky-600" />
+        {s.kind === "available" ? t.banner(s.version) : t.update.installing}
+      </span>
+      {s.kind === "available" && (
+        <Button size="sm" onClick={() => void invoke<UpdateState>("install_update").then(setUpdate)}>
+          {t.update.install(s.version)}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 /** 앱 설정: Windows 시작 시 실행, 설정 파일, 앱 정보. 버튼·페이지 편집과 상관없는 것만 둔다. */
 export function SettingsDialog({ open, onOpenChange }: Props) {
   const t = useT().editor.settings;
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [autostart, setAutostart] = useState<Autostart | null>(null);
-  const [update, setUpdate] = useState<UpdateState | null>(null);
-
-  useEffect(() => {
-    const unlisten = listen<UpdateState>("update://changed", (e) => setUpdate(e.payload));
-    return () => void unlisten.then((f) => f());
-  }, []);
+  const [update, setUpdate] = useUpdate();
 
   useEffect(() => {
     if (!open) return;

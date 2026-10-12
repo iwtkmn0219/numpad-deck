@@ -68,6 +68,9 @@ export function Osd({ payload }: { payload: OsdPayload }) {
             {error}
           </p>
         )}
+        {payload.update && (
+          <p className="mt-2 px-1 text-[11px] text-sky-300/90">{t.osd.update(payload.update)}</p>
+        )}
         {mode === "numbers" && (
           <p className="mt-2 px-1 text-xs text-neutral-400">
             {t.osd.numbersHint}

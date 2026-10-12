@@ -17,7 +17,7 @@ import { ButtonPanel } from "./ButtonPanel";
 import { gridFor } from "@/shared/layout";
 import { KeyGrid, type Selection } from "./KeyGrid";
 import { LayoutEditor } from "./LayoutEditor";
-import { SettingsDialog } from "./SettingsDialog";
+import { SettingsDialog, UpdateBanner } from "./SettingsDialog";
 import { Onboarding } from "./Onboarding";
 import { chooseLanguage, type LanguageChoice } from "./language";
 import { PageTabs } from "./PageTabs";
@@ -74,6 +74,8 @@ export function Editor() {
           </Button>
         </div>
       </header>
+
+      <UpdateBanner />
 
       <PageTabs config={config} page={page} onSelect={setPage} update={update} />
 

@@ -73,6 +73,18 @@ export const en: Dict = {
   editor: {
     windowTitle: "Numpad Deck Settings",
     help: "Show the tour again",
+    layout: {
+      button: "Change key layout",
+      title: "Match the on-screen numpad to your keyboard",
+      body: "Drag the keys to where they are on your keyboard. Pressing a numpad key selects it. Only the shape changes; what each key does stays the same.",
+      pickHint: "Select a key to change its size.",
+      selected: (key: string) => `Key ${key}`,
+      wide: "2 columns wide",
+      tall: "2 rows tall",
+      blocked: "Another key is in the way. Move that key first.",
+      reset: "Standard layout",
+      done: "Done",
+    },
     language: { label: "Language", auto: "Automatic (Windows language)", ko: "한국어", en: "English" },
     addPage: "Add page",
     addEmptyPage: "Empty page",

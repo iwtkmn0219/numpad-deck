@@ -1,6 +1,6 @@
 import type { ButtonKeyName } from "@/bindings/ButtonKeyName";
 import type { Page } from "@/bindings/Page";
-import { SLOTS, type SystemKey } from "@/shared/layout";
+import { gridStyle, type Grid, type SystemKey } from "@/shared/layout";
 import { cn } from "@/lib/utils";
 import { buttonIcon, Icon } from "@/shared/icons";
 import { useT } from "@/i18n";
@@ -8,18 +8,19 @@ import { useT } from "@/i18n";
 export type Selection = { kind: "button"; key: ButtonKeyName } | { kind: "system"; key: SystemKey };
 
 interface Props {
+  grid: Grid;
   page: Page;
   selected: Selection | null;
   onSelect: (selection: Selection) => void;
 }
 
 /** 실제 넘패드 모양 그리드. 칸을 누르면 오른쪽 패널에서 편집한다. */
-export function KeyGrid({ page, selected, onSelect }: Props) {
+export function KeyGrid({ grid, page, selected, onSelect }: Props) {
   const t = useT();
 
   return (
-    <div className="grid grid-cols-4 grid-rows-[repeat(5,84px)] gap-2">
-      {SLOTS.map((slot) => {
+    <div className="gap-2" style={gridStyle(grid, 84)}>
+      {grid.slots.map((slot) => {
         if (slot.kind === "mode") {
           return (
             <div

@@ -115,6 +115,7 @@ pub fn default_config(lang: Lang) -> Config {
         version: VERSION,
         // 언어는 정하지 않는다 (자동 = Windows 표시 언어)
         language: None,
+        layout: None,
         pages: vec![get(DEFAULT_PRESET, lang).expect("기본 프리셋이 있다").page],
     }
 }
@@ -135,6 +136,7 @@ mod tests {
                 let config = Config {
                     version: VERSION,
                     language: None,
+                    layout: None,
                     pages: vec![p.page.clone()],
                 };
                 // 저장했다 다시 읽어도 통과해야 한다 (검증 포함)

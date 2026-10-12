@@ -69,6 +69,18 @@ export const ko = {
   editor: {
     windowTitle: "Numpad Deck 설정",
     help: "사용법 다시 보기",
+    layout: {
+      button: "키 배치 바꾸기",
+      title: "화면 속 넘패드를 내 키보드 모양으로",
+      body: "키를 끌어서 실제 키보드와 같은 자리에 놓으세요. 넘패드 키를 누르면 그 키가 선택돼요. 모양만 바뀌고 키가 하는 일은 그대로예요.",
+      pickHint: "키를 하나 고르면 크기를 바꿀 수 있어요.",
+      selected: (key: string) => `${key} 키`,
+      wide: "가로 2칸",
+      tall: "세로 2줄",
+      blocked: "그 자리에는 다른 키가 있어요. 먼저 그 키를 옮겨 주세요.",
+      reset: "표준 배치로",
+      done: "완료",
+    },
     language: { label: "언어", auto: "자동 (Windows 언어)", ko: "한국어", en: "English" },
     addPage: "페이지 추가",
     addEmptyPage: "빈 페이지",

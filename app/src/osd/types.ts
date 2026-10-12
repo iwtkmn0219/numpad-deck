@@ -1,6 +1,7 @@
 // Rust `app/src-tauri/src/osd.rs`의 `OsdPayload`와 같은 모양이어야 한다.
 
 import type { Button } from "@/bindings/Button";
+import type { KeyPlace } from "@/bindings/KeyPlace";
 
 export type Mode = "deck" | "numbers" | "paused";
 
@@ -20,6 +21,8 @@ export interface OsdPayload {
   error: string | null;
   /** 마이크 음소거 버튼으로 마지막에 바꾼 상태 (아직 안 눌렀으면 null) */
   micMuted: boolean | null;
+  /** 넘패드 모양 (null이면 표준) */
+  layout: KeyPlace[] | null;
 }
 
 export const OSD_EVENT = "osd://update";

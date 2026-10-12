@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { CircleHelp, Globe, Redo2, Undo2 } from "lucide-react";
+import { CircleHelp, Globe, LayoutGrid, Redo2, Undo2 } from "lucide-react";
 import type { Config } from "@/bindings/Config";
 import type { Lang } from "@/bindings/Lang";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,9 @@ import {
 import { useT } from "@/i18n";
 import { installDeckKeyForwarding } from "./api";
 import { ButtonPanel } from "./ButtonPanel";
+import { gridFor } from "@/shared/layout";
 import { KeyGrid, type Selection } from "./KeyGrid";
+import { LayoutEditor } from "./LayoutEditor";
 import { Onboarding } from "./Onboarding";
 import { listPresets } from "./PresetDialog";
 import { relabel } from "./relabel";
@@ -29,6 +31,7 @@ export function Editor() {
   const [selected, setSelected] = useState<Selection | null>({ kind: "button", key: "7" });
 
   const [onboarding, setOnboarding] = useState(false);
+  const [layoutOpen, setLayoutOpen] = useState(false);
 
   // 편집기가 앞에 있을 때도 넘패드 덱 키가 동작하게
   useEffect(() => installDeckKeyForwarding(), []);
@@ -59,6 +62,9 @@ export function Editor() {
           <Button variant="ghost" size="icon-sm" onClick={redo} disabled={!canRedo} title={`${t.redo} (Ctrl+Y)`}>
             <Redo2 />
           </Button>
+          <Button variant="ghost" size="icon-sm" onClick={() => setLayoutOpen(true)} title={t.layout.button}>
+            <LayoutGrid />
+          </Button>
           <LanguageMenu config={config} update={update} />
           <Button variant="ghost" size="icon-sm" onClick={() => setOnboarding(true)} title={t.help}>
             <CircleHelp />
@@ -70,12 +76,14 @@ export function Editor() {
 
       <main className="flex min-h-0 flex-1 gap-6 overflow-auto p-6">
         <div className="w-[480px] shrink-0">
-          <KeyGrid page={current} selected={selected} onSelect={setSelected} />
+          <KeyGrid grid={gridFor(config.layout)} page={current} selected={selected} onSelect={setSelected} />
         </div>
         <aside className="min-h-0 min-w-0 flex-1 overflow-y-auto rounded-xl border bg-card p-5">
           <ButtonPanel config={config} page={page} selected={selected} update={update} />
         </aside>
       </main>
+
+      <LayoutEditor open={layoutOpen} onOpenChange={setLayoutOpen} config={config} update={update} />
 
       {onboarding && (
         <Onboarding

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { SLOTS, type Slot } from "@/shared/layout";
+import { gridFor, gridStyle, type Slot } from "@/shared/layout";
 import { buttonIcon, Icon } from "@/shared/icons";
 import { useT, type Dict } from "@/i18n";
 import type { OsdPayload } from "./types";
@@ -11,6 +11,7 @@ export function Osd({ payload }: { payload: OsdPayload }) {
   const t = useT();
   const { mode, error } = payload;
   const active = mode === "deck";
+  const grid = gridFor(payload.layout);
   // 방금 누른 버튼이 마이크 음소거면 바뀐 상태를 크게 보인다
   const pressed = payload.highlight ? payload.buttons[payload.highlight] : undefined;
   const micNotice = pressed?.action.type === "micMute" && !error ? payload.micMuted : null;
@@ -48,11 +49,10 @@ export function Osd({ payload }: { payload: OsdPayload }) {
         </header>
 
         <div
-          className={`grid grid-cols-4 grid-rows-[repeat(5,52px)] gap-1.5 transition-opacity ${
-            active ? "" : "opacity-40"
-          }`}
+          style={gridStyle(grid, 52)}
+          className={`gap-1.5 transition-opacity ${active ? "" : "opacity-40"}`}
         >
-          {SLOTS.map((slot) => (
+          {grid.slots.map((slot) => (
             <Cell
               key={slot.kind === "mode" ? "mode" : slot.key}
               slot={slot}

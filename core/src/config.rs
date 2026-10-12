@@ -41,6 +41,10 @@ pub struct Config {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub language: Option<Lang>,
+    /// 화면(OSD·편집기)에 그리는 넘패드 모양. 없으면 표준 넘패드. 키 역할과는 상관없다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub layout: Option<Vec<KeyPlace>>,
     pub pages: Vec<Page>,
 }
 
@@ -122,6 +126,126 @@ pub enum MediaCommand {
     VolumeUp,
     VolumeDown,
     VolumeMute,
+}
+
+/// 화면에 그리는 넘패드 키 하나의 자리 (칸 단위). 노트북처럼 넘패드 모양이 다른 키보드에
+/// 화면을 맞추는 용도이고, 키가 하는 일과는 상관없다.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export, export_to = "../../app/src/bindings/")]
+pub struct KeyPlace {
+    /// 키캡 글자(`"7"`, `"+"`, `"Enter"` …) 또는 `"NumLock"`
+    #[ts(as = "LayoutKeyName")]
+    pub key: String,
+    pub x: u8,
+    pub y: u8,
+    /// 1 또는 2
+    pub w: u8,
+    /// 1 또는 2
+    pub h: u8,
+}
+
+/// 배치 칸의 가로·세로 최대 수
+pub const LAYOUT_MAX: u8 = 8;
+
+/// 배치에 들어가는 키 이름: 넘패드 16개 + NumLock.
+pub fn layout_key_names() -> impl Iterator<Item = &'static str> {
+    NumpadKey::ALL
+        .into_iter()
+        .map(NumpadKey::label)
+        .chain(std::iter::once("NumLock"))
+}
+
+/// TypeScript 타입 생성 전용: 배치 키 이름.
+#[allow(dead_code)]
+#[derive(TS)]
+#[ts(export, export_to = "../../app/src/bindings/")]
+enum LayoutKeyName {
+    #[ts(rename = "NumLock")]
+    NumLock,
+    #[ts(rename = "/")]
+    Divide,
+    #[ts(rename = "*")]
+    Multiply,
+    #[ts(rename = "-")]
+    Subtract,
+    #[ts(rename = "7")]
+    N7,
+    #[ts(rename = "8")]
+    N8,
+    #[ts(rename = "9")]
+    N9,
+    #[ts(rename = "+")]
+    Add,
+    #[ts(rename = "4")]
+    N4,
+    #[ts(rename = "5")]
+    N5,
+    #[ts(rename = "6")]
+    N6,
+    #[ts(rename = "1")]
+    N1,
+    #[ts(rename = "2")]
+    N2,
+    #[ts(rename = "3")]
+    N3,
+    #[ts(rename = "Enter")]
+    Enter,
+    #[ts(rename = "0")]
+    N0,
+    #[ts(rename = ".")]
+    Decimal,
+}
+
+fn validate_layout(places: &[KeyPlace]) -> Result<(), String> {
+    let n = LAYOUT_MAX as usize;
+    let mut taken = vec![false; n * n];
+    let mut seen: Vec<&str> = Vec::new();
+    for p in places {
+        let key = p.key.as_str();
+        if !layout_key_names().any(|k| k == key) {
+            return Err(tr(
+                format!("배치: 키 \"{key}\"를 알 수 없습니다."),
+                format!("Layout: unknown key \"{key}\"."),
+            ));
+        }
+        if seen.contains(&key) {
+            return Err(tr(
+                format!("배치: 키 \"{key}\"가 두 번 있습니다."),
+                format!("Layout: key \"{key}\" appears twice."),
+            ));
+        }
+        seen.push(key);
+        let fits = (1..=2).contains(&p.w)
+            && (1..=2).contains(&p.h)
+            && p.x + p.w <= LAYOUT_MAX
+            && p.y + p.h <= LAYOUT_MAX;
+        if !fits {
+            return Err(tr(
+                format!("배치: 키 \"{key}\"의 자리나 크기가 범위를 벗어났습니다."),
+                format!("Layout: key \"{key}\" is out of range."),
+            ));
+        }
+        for y in p.y..p.y + p.h {
+            for x in p.x..p.x + p.w {
+                let cell = &mut taken[y as usize * n + x as usize];
+                if *cell {
+                    return Err(tr(
+                        format!("배치: 키 \"{key}\"가 다른 키와 겹칩니다."),
+                        format!("Layout: key \"{key}\" overlaps another key."),
+                    ));
+                }
+                *cell = true;
+            }
+        }
+    }
+    if let Some(missing) = layout_key_names().find(|k| !seen.contains(k)) {
+        return Err(tr(
+            format!("배치: 키 \"{missing}\"가 빠졌습니다."),
+            format!("Layout: key \"{missing}\" is missing."),
+        ));
+    }
+    Ok(())
 }
 
 /// TypeScript 타입 생성 전용: 버튼 키 이름 (`"7"`, `"+"`, `"Enter"` …).
@@ -234,6 +358,9 @@ impl Config {
                 format!("설정 파일 버전 {v}은 지원하지 않습니다 (지원: {VERSION})."),
                 format!("Config file version {v} is not supported (supported: {VERSION})."),
             ));
+        }
+        if let Some(layout) = &self.layout {
+            validate_layout(layout)?;
         }
         if self.pages.is_empty() {
             return Err(tr(
@@ -506,6 +633,70 @@ pub fn watch_into(
 mod tests {
     use super::*;
     use std::time::Instant;
+
+    /// 표준 넘패드 모양 (`app/src/shared/layout.ts`의 기본 배치와 같다)
+    fn standard_layout() -> Vec<KeyPlace> {
+        let places = [
+            ("NumLock", 0, 0, 1, 1),
+            ("/", 1, 0, 1, 1),
+            ("*", 2, 0, 1, 1),
+            ("-", 3, 0, 1, 1),
+            ("7", 0, 1, 1, 1),
+            ("8", 1, 1, 1, 1),
+            ("9", 2, 1, 1, 1),
+            ("+", 3, 1, 1, 2),
+            ("4", 0, 2, 1, 1),
+            ("5", 1, 2, 1, 1),
+            ("6", 2, 2, 1, 1),
+            ("1", 0, 3, 1, 1),
+            ("2", 1, 3, 1, 1),
+            ("3", 2, 3, 1, 1),
+            ("Enter", 3, 3, 1, 2),
+            ("0", 0, 4, 2, 1),
+            (".", 2, 4, 1, 1),
+        ];
+        places
+            .into_iter()
+            .map(|(key, x, y, w, h)| KeyPlace {
+                key: key.into(),
+                x,
+                y,
+                w,
+                h,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn layout_checks() {
+        let mut config = Config::default_config();
+        config.layout = Some(standard_layout());
+        assert!(config.validate().is_ok());
+        let text = serde_json::to_string(&config).unwrap();
+        assert_eq!(parse(&text).unwrap().layout, config.layout);
+
+        // 겹침
+        let mut overlap = standard_layout();
+        overlap[16].x = 1; // "."을 0 자리로
+        config.layout = Some(overlap);
+        assert!(config.validate().is_err());
+
+        // 빠진 키
+        let mut missing = standard_layout();
+        missing.pop();
+        config.layout = Some(missing);
+        assert!(config.validate().is_err());
+
+        // 3칸짜리, 범위 밖
+        let mut wide = standard_layout();
+        wide[15].w = 3;
+        config.layout = Some(wide);
+        assert!(config.validate().is_err());
+        let mut far = standard_layout();
+        far[0].x = LAYOUT_MAX;
+        config.layout = Some(far);
+        assert!(config.validate().is_err());
+    }
 
     #[test]
     fn language_is_optional() {

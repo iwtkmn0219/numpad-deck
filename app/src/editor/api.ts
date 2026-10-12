@@ -116,9 +116,23 @@ export async function recordHotkey(handler: (result: RecordResult) => void): Pro
  * 키를 받지 못하므로, 화면이 받은 넘패드 키(NumLock 꺼짐)를 코어에 넘긴다. 훅이 키를
  * 받는 환경에서는 훅이 키를 가로채 화면에 오지 않으므로 두 번 실행되지 않는다.
  */
+/** 0보다 크면 넘패드 덱 키 전달을 멈춘다 (배치 편집 중 등). */
+let forwardingPaused = 0;
+
+/** 넘패드 덱 키 전달을 잠시 멈춘다. 돌려받은 함수를 부르면 다시 켠다. */
+export function pauseDeckForwarding(): () => void {
+  forwardingPaused++;
+  let resumed = false;
+  return () => {
+    if (resumed) return;
+    resumed = true;
+    forwardingPaused--;
+  };
+}
+
 export function installDeckKeyForwarding(): () => void {
   const onKey = (e: KeyboardEvent) => {
-    if (recordingActive) return;
+    if (recordingActive || forwardingPaused > 0) return;
     const label = numpadLabel(e.code);
     if (!label || e.getModifierState("NumLock")) return;
     e.preventDefault();

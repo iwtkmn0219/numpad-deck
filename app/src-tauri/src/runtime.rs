@@ -84,6 +84,7 @@ impl State {
             highlight: highlight.map(|k| k.label().to_string()),
             error,
             mic_muted: self.mic_muted,
+            layout: self.config.layout.clone(),
         }
     }
 }

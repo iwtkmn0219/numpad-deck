@@ -8,7 +8,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { useLang, useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { buttonIcon, Icon } from "@/shared/icons";
-import { SLOTS } from "@/shared/layout";
+import type { KeyPlace } from "@/bindings/KeyPlace";
+import { gridFor, gridStyle } from "@/shared/layout";
 
 const cache = new Map<Lang, Promise<Preset[]>>();
 
@@ -26,10 +27,12 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAdd: (page: Page) => void;
+  /** 미리보기를 이 모양으로 (설정의 배치) */
+  layout?: KeyPlace[];
 }
 
 /** 프리셋에서 페이지 추가: 왼쪽 목록, 오른쪽 미리보기. */
-export function PresetDialog({ open, onOpenChange, onAdd }: Props) {
+export function PresetDialog({ open, onOpenChange, onAdd, layout }: Props) {
   const t = useT().editor.presets;
   const lang = useLang();
   const [presets, setPresets] = useState<Preset[]>([]);
@@ -67,7 +70,7 @@ export function PresetDialog({ open, onOpenChange, onAdd }: Props) {
           {preset && (
             <div className="min-w-0 flex-1 space-y-3">
               <p className="text-sm text-muted-foreground">{preset.description}</p>
-              <MiniGrid page={preset.page} />
+              <MiniGrid page={preset.page} layout={layout} />
               <div className="flex justify-end">
                 <Button onClick={() => onAdd(preset.page)}>{t.add(preset.name)}</Button>
               </div>
@@ -80,11 +83,12 @@ export function PresetDialog({ open, onOpenChange, onAdd }: Props) {
 }
 
 /** 프리셋 미리보기용 작은 넘패드 */
-function MiniGrid({ page }: { page: Page }) {
+function MiniGrid({ page, layout }: { page: Page; layout?: KeyPlace[] }) {
   const t = useT();
+  const grid = gridFor(layout);
   return (
-    <div className="grid grid-cols-4 grid-rows-[repeat(5,52px)] gap-1.5">
-      {SLOTS.map((slot) => {
+    <div className="gap-1.5" style={gridStyle(grid, 52)}>
+      {grid.slots.map((slot) => {
         if (slot.kind === "mode") {
           return <div key="mode" style={{ gridArea: slot.area }} className="rounded-lg border border-dashed" />;
         }

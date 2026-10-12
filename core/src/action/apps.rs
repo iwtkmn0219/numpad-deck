@@ -26,10 +26,18 @@ pub struct AppEntry {
 pub fn list() -> Result<Vec<AppEntry>, String> {
     unsafe {
         let folder: IShellItem = SHCreateItemFromParsingName(w!("shell:AppsFolder"), None)
-            .map_err(|e| format!("앱 목록을 열 수 없습니다: {e}"))?;
-        let items: IEnumShellItems = folder
-            .BindToHandler(None, &BHID_EnumItems)
-            .map_err(|e| format!("앱 목록을 읽을 수 없습니다: {e}"))?;
+            .map_err(|e| {
+                crate::i18n::tr(
+                    format!("앱 목록을 열 수 없습니다: {e}"),
+                    format!("Cannot open the app list: {e}"),
+                )
+            })?;
+        let items: IEnumShellItems = folder.BindToHandler(None, &BHID_EnumItems).map_err(|e| {
+            crate::i18n::tr(
+                format!("앱 목록을 읽을 수 없습니다: {e}"),
+                format!("Cannot read the app list: {e}"),
+            )
+        })?;
 
         let mut apps = Vec::new();
         loop {

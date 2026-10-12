@@ -81,6 +81,12 @@ fn list_presets(lang: Lang) -> Vec<Preset> {
     presets::all(lang)
 }
 
+/// 지금 언어 (설정의 `language`, 없으면 Windows 표시 언어).
+#[tauri::command]
+fn get_lang(runtime: State<'_, Arc<Runtime>>) -> Lang {
+    runtime.lang()
+}
+
 /// 지금 모드 (온보딩 ① NumLock 끄기).
 #[tauri::command]
 fn get_mode(runtime: State<'_, Arc<Runtime>>) -> tray::Mode {
@@ -119,6 +125,7 @@ pub fn run() {
             press_deck_key,
             list_presets,
             get_mode,
+            get_lang,
             onboarding_pending,
             finish_onboarding
         ])

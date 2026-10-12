@@ -5,7 +5,7 @@ import { Check, CircleAlert, Keyboard, Pin } from "lucide-react";
 import type { Config } from "@/bindings/Config";
 import type { Preset } from "@/bindings/Preset";
 import { Button } from "@/components/ui/button";
-import { useT } from "@/i18n";
+import { useLang, useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { buttonIcon, Icon } from "@/shared/icons";
 import { numpadLabel } from "./keymap";
@@ -26,6 +26,7 @@ interface Props {
  */
 export function Onboarding({ config, update, onClose }: Props) {
   const t = useT().onboarding;
+  const lang = useLang();
   const [step, setStep] = useState(0);
   const [checking, setChecking] = useState(false);
   const [chosen, setChosen] = useState<string[]>([]);
@@ -79,7 +80,7 @@ export function Onboarding({ config, update, onClose }: Props) {
             {step < 2 ? (
               <Button onClick={() => setStep(step + 1)}>{t.next}</Button>
             ) : (
-              <Button onClick={() => void listPresets().then(finish)}>{t.finish}</Button>
+              <Button onClick={() => void listPresets(lang).then(finish)}>{t.finish}</Button>
             )}
           </div>
         )}
@@ -271,11 +272,12 @@ function PresetStep({
   setChosen: (ids: string[]) => void;
 }) {
   const t = useT().onboarding.presets;
+  const lang = useLang();
   const [presets, setPresets] = useState<Preset[]>([]);
 
   useEffect(() => {
-    void listPresets().then(setPresets);
-  }, []);
+    void listPresets(lang).then(setPresets);
+  }, [lang]);
 
   const toggle = (id: string) =>
     setChosen(chosen.includes(id) ? chosen.filter((c) => c !== id) : [...chosen, id]);

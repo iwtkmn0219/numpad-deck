@@ -10,14 +10,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::config::{Action, Button, ButtonKey, Config, Page, VERSION};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "lowercase")]
-#[ts(export, export_to = "../../app/src/bindings/")]
-pub enum Lang {
-    Ko,
-    En,
-}
+pub use crate::i18n::Lang;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -120,6 +113,8 @@ pub fn get(id: &str, lang: Lang) -> Option<Preset> {
 pub fn default_config(lang: Lang) -> Config {
     Config {
         version: VERSION,
+        // 언어는 정하지 않는다 (자동 = Windows 표시 언어)
+        language: None,
         pages: vec![get(DEFAULT_PRESET, lang).expect("기본 프리셋이 있다").page],
     }
 }
@@ -139,6 +134,7 @@ mod tests {
                 assert!(!p.page.buttons.is_empty(), "{}", p.id);
                 let config = Config {
                     version: VERSION,
+                    language: None,
                     pages: vec![p.page.clone()],
                 };
                 // 저장했다 다시 읽어도 통과해야 한다 (검증 포함)

@@ -186,7 +186,10 @@ fn activate(hwnd: HWND) -> Result<(), String> {
             }
         }
     }
-    Err("창을 앞으로 가져오지 못했습니다. Windows가 포커스 변경을 막았습니다.".into())
+    Err(crate::i18n::tr(
+        "창을 앞으로 가져오지 못했습니다. Windows가 포커스 변경을 막았습니다.",
+        "Could not bring the window to the front. Windows blocked the focus change.",
+    ))
 }
 
 fn try_foreground(hwnd: HWND) -> bool {

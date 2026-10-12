@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { listen } from "@tauri-apps/api/event";
+import { initI18n } from "@/i18n";
 import { Osd } from "./Osd";
 import { OSD_EVENT, type OsdPayload } from "./types";
 import "../index.css";
@@ -8,6 +9,8 @@ import "../index.css";
 // OSD 창은 투명하다. 배경을 칠하지 않는다.
 document.documentElement.style.background = "transparent";
 document.body.style.background = "transparent";
+
+initI18n();
 
 function App() {
   const [payload, setPayload] = useState<OsdPayload | null>(null);

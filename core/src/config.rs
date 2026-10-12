@@ -19,6 +19,7 @@ use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode, DebounceEventR
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use ts_rs::TS;
 
+use crate::i18n::{tr, Lang};
 use crate::key::NumpadKey;
 use crate::layout::{self, Role, BUTTON_KEYS};
 
@@ -36,6 +37,10 @@ pub const MAX_DELAY_MS: u64 = 60_000;
 #[ts(export, export_to = "../../app/src/bindings/")]
 pub struct Config {
     pub version: u32,
+    /// UI·메시지 언어. 없으면 Windows 표시 언어를 따른다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub language: Option<Lang>,
     pub pages: Vec<Page>,
 }
 
@@ -201,19 +206,19 @@ impl<'de> Deserialize<'de> for ButtonKey {
             .map(|&k| ButtonKey(k))
             .ok_or_else(|| {
                 let names: Vec<&str> = BUTTON_KEYS.iter().map(|k| k.label()).collect();
-                serde::de::Error::custom(format!(
-                    "버튼 키 \"{name}\"를 알 수 없습니다. 쓸 수 있는 키: {}",
-                    names.join(" ")
+                let names = names.join(" ");
+                serde::de::Error::custom(tr(
+                    format!("버튼 키 \"{name}\"를 알 수 없습니다. 쓸 수 있는 키: {names}"),
+                    format!("Unknown button key \"{name}\". Available keys: {names}"),
                 ))
             })
     }
 }
 
 impl Config {
-    /// 첫 실행 때 만드는 기본 설정.
+    /// 첫 실행 때 만드는 기본 설정 (버튼 이름은 지금 언어로).
     pub fn default_config() -> Config {
-        // 언어 선택은 3-6에서 붙인다.
-        crate::presets::default_config(crate::presets::Lang::Ko)
+        crate::presets::default_config(crate::i18n::current())
     }
 
     /// 현재 페이지에서 키에 해당하는 버튼.
@@ -224,22 +229,25 @@ impl Config {
 
     fn validate(&self) -> Result<(), String> {
         if self.version != VERSION {
-            return Err(format!(
-                "설정 파일 버전 {}은 지원하지 않습니다 (지원: {VERSION}).",
-                self.version
+            let v = self.version;
+            return Err(tr(
+                format!("설정 파일 버전 {v}은 지원하지 않습니다 (지원: {VERSION})."),
+                format!("Config file version {v} is not supported (supported: {VERSION})."),
             ));
         }
         if self.pages.is_empty() {
-            return Err("페이지가 하나 이상 있어야 합니다.".into());
+            return Err(tr(
+                "페이지가 하나 이상 있어야 합니다.",
+                "There must be at least one page.",
+            ));
         }
         for (p, page) in self.pages.iter().enumerate() {
             for (key, button) in &page.buttons {
                 let at = || {
-                    format!(
-                        "{}번째 페이지 \"{}\"의 {} 키",
-                        p + 1,
-                        page.name,
-                        key.0.label()
+                    let (n, name, key) = (p + 1, &page.name, key.0.label());
+                    tr(
+                        format!("{n}번째 페이지 \"{name}\"의 {key} 키"),
+                        format!("Page {n} \"{name}\", key {key}"),
                     )
                 };
                 validate_action(&button.action, false).map_err(|e| format!("{}: {e}", at()))?;
@@ -251,27 +259,37 @@ impl Config {
 
 fn validate_action(action: &Action, in_sequence: bool) -> Result<(), String> {
     match action {
-        Action::Hotkey { keys } if keys.is_empty() => Err("단축키가 비어 있습니다.".into()),
+        Action::Hotkey { keys } if keys.is_empty() => {
+            Err(tr("단축키가 비어 있습니다.", "The shortcut is empty."))
+        }
         Action::Hotkey { keys } => crate::keys::parse_all(keys).map(|_| ()),
         Action::Launch { target, .. } | Action::Open { target } if target.trim().is_empty() => {
-            Err("대상이 비어 있습니다.".into())
+            Err(tr("대상이 비어 있습니다.", "The target is empty."))
         }
         Action::Sound { file, .. } if file.trim().is_empty() => {
-            Err("소리 파일이 비어 있습니다.".into())
+            Err(tr("소리 파일이 비어 있습니다.", "The sound file is empty."))
         }
         Action::Sound {
             volume: Some(v), ..
-        } if !(0.0..=1.0).contains(v) => Err(format!("볼륨 {v}은 0에서 1 사이여야 합니다.")),
-        Action::Delay { .. } if !in_sequence => {
-            Err("지연(delay)은 묶음(sequence) 안에서만 쓸 수 있습니다.".into())
-        }
-        Action::Delay { ms } if *ms > MAX_DELAY_MS => Err(format!(
-            "지연 {ms}ms가 너무 깁니다 (최대 {MAX_DELAY_MS}ms)."
+        } if !(0.0..=1.0).contains(v) => Err(tr(
+            format!("볼륨 {v}은 0에서 1 사이여야 합니다."),
+            format!("Volume {v} must be between 0 and 1."),
         )),
-        Action::Sequence { .. } if in_sequence => {
-            Err("묶음 안에 다시 묶음을 넣을 수 없습니다.".into())
+        Action::Delay { .. } if !in_sequence => Err(tr(
+            "지연(delay)은 묶음(sequence) 안에서만 쓸 수 있습니다.",
+            "A delay can only be used inside a sequence.",
+        )),
+        Action::Delay { ms } if *ms > MAX_DELAY_MS => Err(tr(
+            format!("지연 {ms}ms가 너무 깁니다 (최대 {MAX_DELAY_MS}ms)."),
+            format!("Delay {ms}ms is too long (max {MAX_DELAY_MS}ms)."),
+        )),
+        Action::Sequence { .. } if in_sequence => Err(tr(
+            "묶음 안에 다시 묶음을 넣을 수 없습니다.",
+            "A sequence cannot contain another sequence.",
+        )),
+        Action::Sequence { steps } if steps.is_empty() => {
+            Err(tr("묶음이 비어 있습니다.", "The sequence is empty."))
         }
-        Action::Sequence { steps } if steps.is_empty() => Err("묶음이 비어 있습니다.".into()),
         Action::Sequence { steps } => steps.iter().try_for_each(|s| validate_action(s, true)),
         _ => Ok(()),
     }
@@ -292,13 +310,22 @@ pub enum ConfigError {
 impl fmt::Display for ConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ConfigError::Io(e) => write!(f, "설정 파일을 읽거나 쓸 수 없습니다: {e}"),
+            ConfigError::Io(e) => f.write_str(&tr(
+                format!("설정 파일을 읽거나 쓸 수 없습니다: {e}"),
+                format!("Cannot read or write the config file: {e}"),
+            )),
             ConfigError::Syntax {
                 line,
                 column,
                 message,
-            } => write!(f, "설정 파일 {line}번째 줄 {column}번째 칸: {message}"),
-            ConfigError::Invalid(msg) => write!(f, "설정이 올바르지 않습니다: {msg}"),
+            } => f.write_str(&tr(
+                format!("설정 파일 {line}번째 줄 {column}번째 칸: {message}"),
+                format!("Config file line {line}, column {column}: {message}"),
+            )),
+            ConfigError::Invalid(msg) => f.write_str(&tr(
+                format!("설정이 올바르지 않습니다: {msg}"),
+                format!("Invalid config: {msg}"),
+            )),
         }
     }
 }
@@ -337,10 +364,19 @@ pub fn parse(text: &str) -> Result<Config, ConfigError> {
 fn syntax_message(e: &serde_json::Error) -> String {
     use serde_json::error::Category;
     match e.classify() {
-        Category::Syntax => "JSON 문법이 맞지 않습니다. 쉼표, 따옴표, 괄호를 확인하세요.".into(),
-        Category::Eof => "파일이 중간에 끝났습니다. 닫는 괄호가 빠졌는지 확인하세요.".into(),
-        Category::Io => "파일을 읽는 중 오류가 났습니다.".into(),
-        // 형식 오류: 직접 만든 한국어 메시지이거나 serde의 영어 메시지(필드 이름 포함).
+        Category::Syntax => tr(
+            "JSON 문법이 맞지 않습니다. 쉼표, 따옴표, 괄호를 확인하세요.",
+            "Invalid JSON. Check commas, quotes and brackets.",
+        ),
+        Category::Eof => tr(
+            "파일이 중간에 끝났습니다. 닫는 괄호가 빠졌는지 확인하세요.",
+            "The file ends too early. Check for a missing closing bracket.",
+        ),
+        Category::Io => tr(
+            "파일을 읽는 중 오류가 났습니다.",
+            "Error while reading the file.",
+        ),
+        // 형식 오류: 직접 만든 메시지(지금 언어)이거나 serde의 영어 메시지(필드 이름 포함).
         Category::Data => {
             let full = e.to_string();
             match full.rsplit_once(" at line ") {
@@ -397,7 +433,12 @@ where
 {
     let dir = path
         .parent()
-        .ok_or_else(|| ConfigError::Invalid("설정 파일 경로에 폴더가 없습니다.".into()))?
+        .ok_or_else(|| {
+            ConfigError::Invalid(tr(
+                "설정 파일 경로에 폴더가 없습니다.",
+                "The config file path has no folder.",
+            ))
+        })?
         .to_path_buf();
     let file_name = path.file_name().map(|n| n.to_os_string());
     let path = path.to_path_buf();
@@ -465,6 +506,19 @@ pub fn watch_into(
 mod tests {
     use super::*;
     use std::time::Instant;
+
+    #[test]
+    fn language_is_optional() {
+        let auto = r#"{"version":1,"pages":[{"name":"p"}]}"#;
+        let config = parse(auto).unwrap();
+        assert_eq!(config.language, None);
+        // 자동이면 파일에 적지 않는다
+        assert!(!serde_json::to_string(&config).unwrap().contains("language"));
+
+        let en = r#"{"version":1,"language":"en","pages":[{"name":"p"}]}"#;
+        assert_eq!(parse(en).unwrap().language, Some(Lang::En));
+        assert!(parse(r#"{"version":1,"language":"fr","pages":[{"name":"p"}]}"#).is_err());
+    }
 
     #[test]
     fn default_config_is_valid_and_round_trips() {

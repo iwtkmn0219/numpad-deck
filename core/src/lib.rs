@@ -15,6 +15,7 @@
 pub mod config;
 pub mod deck;
 pub mod gate;
+pub mod i18n;
 pub mod key;
 pub mod keys;
 pub mod layout;

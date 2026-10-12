@@ -51,14 +51,21 @@ pub fn execute(target: &str, args: Option<&str>) -> Result<(), String> {
     match unsafe { ShellExecuteExW(&mut info) } {
         Ok(()) => Ok(()),
         Err(e) => {
+            use crate::i18n::tr;
             let reason = match e.code().0 as u32 & 0xFFFF {
-                2 => "파일을 찾을 수 없습니다".to_string(),
-                3 => "경로를 찾을 수 없습니다".to_string(),
-                5 => "접근이 거부되었습니다".to_string(),
-                1155 => "이 파일을 열 프로그램이 없습니다".to_string(),
-                1223 => "사용자가 취소했습니다".to_string(),
+                2 => tr("파일을 찾을 수 없습니다", "File not found"),
+                3 => tr("경로를 찾을 수 없습니다", "Path not found"),
+                5 => tr("접근이 거부되었습니다", "Access denied"),
+                1155 => tr(
+                    "이 파일을 열 프로그램이 없습니다",
+                    "No app is set to open this file",
+                ),
+                1223 => tr("사용자가 취소했습니다", "Cancelled by the user"),
                 // 모르는 오류만 Windows 원문을 붙인다.
-                _ => format!("열 수 없습니다 ({e})"),
+                _ => tr(
+                    format!("열 수 없습니다 ({e})"),
+                    format!("Cannot open ({e})"),
+                ),
             };
             Err(format!("\"{target}\": {reason}"))
         }

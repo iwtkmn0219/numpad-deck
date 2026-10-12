@@ -15,6 +15,7 @@ use rodio::source::{Amplify, Source};
 use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink, Player};
 
 use super::shell;
+use crate::i18n::tr;
 
 const IDLE_CLOSE: Duration = Duration::from_secs(3);
 const POLL: Duration = Duration::from_millis(250);
@@ -79,13 +80,26 @@ impl Audio {
     /// 파일을 열어 재생을 시작한다. 끝날 때까지 기다리지 않는다. 연타하면 겹쳐 재생한다.
     pub fn play(&self, file: &str, volume: f32) -> Result<(), String> {
         let path = shell::expand_env(file.trim());
-        let f =
-            File::open(&path).map_err(|e| format!("소리 파일 \"{path}\"을 열 수 없습니다: {e}"))?;
-        let decoder = Decoder::try_from(f)
-            .map_err(|e| format!("\"{path}\"은 재생할 수 없는 형식입니다: {e}"))?;
+        let f = File::open(&path).map_err(|e| {
+            tr(
+                format!("소리 파일 \"{path}\"을 열 수 없습니다: {e}"),
+                format!("Cannot open sound file \"{path}\": {e}"),
+            )
+        })?;
+        let decoder = Decoder::try_from(f).map_err(|e| {
+            tr(
+                format!("\"{path}\"은 재생할 수 없는 형식입니다: {e}"),
+                format!("\"{path}\" is not a playable format: {e}"),
+            )
+        })?;
         self.tx
             .send(Message::Play(decoder.amplify(volume)))
-            .map_err(|_| "소리 재생 스레드가 멈췄습니다.".to_string())
+            .map_err(|_| {
+                tr(
+                    "소리 재생 스레드가 멈췄습니다.",
+                    "The sound thread has stopped.",
+                )
+            })
     }
 
     /// 재생 중인 효과음을 모두 멈춘다.

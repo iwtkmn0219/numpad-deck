@@ -132,7 +132,14 @@ pub fn name_of(vk: u16) -> Option<String> {
 pub fn parse_all(names: &[String]) -> Result<Vec<HotkeyKey>, String> {
     names
         .iter()
-        .map(|n| parse(n).ok_or_else(|| format!("키 이름 \"{n}\"을 알 수 없습니다.")))
+        .map(|n| {
+            parse(n).ok_or_else(|| {
+                crate::i18n::tr(
+                    format!("키 이름 \"{n}\"을 알 수 없습니다."),
+                    format!("Unknown key name \"{n}\"."),
+                )
+            })
+        })
         .collect()
 }
 

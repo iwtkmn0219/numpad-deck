@@ -1,20 +1,25 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import type { Lang } from "@/bindings/Lang";
 import type { Page } from "@/bindings/Page";
 import type { Preset } from "@/bindings/Preset";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useT } from "@/i18n";
+import { useLang, useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { buttonIcon, Icon } from "@/shared/icons";
 import { SLOTS } from "@/shared/layout";
 
-let cache: Promise<Preset[]> | null = null;
+const cache = new Map<Lang, Promise<Preset[]>>();
 
-/** 프리셋 목록. 언어 선택은 3-6에서 붙인다. */
-export function listPresets(): Promise<Preset[]> {
-  cache ??= invoke<Preset[]>("list_presets", { lang: "ko" });
-  return cache;
+/** 프리셋 목록 (이름·버튼 이름은 그 언어로). */
+export function listPresets(lang: Lang): Promise<Preset[]> {
+  let presets = cache.get(lang);
+  if (!presets) {
+    presets = invoke<Preset[]>("list_presets", { lang });
+    cache.set(lang, presets);
+  }
+  return presets;
 }
 
 interface Props {
@@ -26,12 +31,13 @@ interface Props {
 /** 프리셋에서 페이지 추가: 왼쪽 목록, 오른쪽 미리보기. */
 export function PresetDialog({ open, onOpenChange, onAdd }: Props) {
   const t = useT().editor.presets;
+  const lang = useLang();
   const [presets, setPresets] = useState<Preset[]>([]);
   const [selected, setSelected] = useState(0);
 
   useEffect(() => {
-    if (open) void listPresets().then(setPresets);
-  }, [open]);
+    if (open) void listPresets(lang).then(setPresets);
+  }, [open, lang]);
 
   const preset = presets[selected];
 

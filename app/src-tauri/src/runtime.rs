@@ -17,6 +17,7 @@ use deck_core::action::{ExecEvent, Executor};
 use deck_core::config::{self, Action, Config, ConfigWatcher};
 use deck_core::deck::{Deck, Dispatch};
 use deck_core::hook::{self, HookConfig, HookEvent, HookHandle};
+use deck_core::i18n::{self, tr, Lang};
 use deck_core::key::{NumpadKey, RawKey};
 use deck_core::record::{Outcome, Recorder, Rejection};
 use serde::Serialize;
@@ -86,6 +87,8 @@ impl State {
 
 /// 편집기에 보내는 이벤트: 파일이 밖에서 바뀌어 다시 읽었다.
 pub const CONFIG_CHANGED: &str = "config://changed";
+/// 모든 창에 보내는 이벤트: 언어가 바뀌었다 (설정의 `language`).
+pub const LANG_CHANGED: &str = "lang://changed";
 /// 편집기에 보내는 이벤트: 모드(`"deck"` | `"numbers"` | `"paused"`)가 바뀌었을 수 있다 (온보딩).
 pub const MODE_CHANGED: &str = "mode://changed";
 /// 단축키 녹화 결과. 프런트엔드 `src/editor/api.ts`의 `RecordResult`와 모양이 같아야 한다.
@@ -130,6 +133,17 @@ struct Effects {
     config_changed: Option<Config>,
     /// 띄우지 않고 OSD 내용만 바꾼다 (설정이 바뀌었을 때).
     osd_refresh: Option<Payload>,
+    /// 언어가 바뀌었다 (창 제목·화면 문자열).
+    lang: Option<Lang>,
+}
+
+/// 설정의 언어를 코어에 반영한다. 바뀌었으면 새 언어.
+fn sync_lang(config: &Config) -> Option<Lang> {
+    let lang = i18n::resolve(config.language);
+    (lang != i18n::current()).then(|| {
+        i18n::set(lang);
+        lang
+    })
 }
 
 /// 트레이와 OSD. 메인 스레드에서 만든 뒤 붙인다. 갱신할 때는 복제해 꺼내고 잠금을
@@ -158,11 +172,14 @@ impl Runtime {
     pub fn start() -> Result<Runtime, String> {
         let config_path = config::default_path().ok_or("APPDATA 환경 변수가 없습니다")?;
         let first_run = !config_path.exists();
+        // 첫 실행 기본 설정의 버튼 이름과 오류 메시지를 Windows 표시 언어로
+        i18n::set(i18n::system());
         // 설정이 깨져 있으면 기본 설정으로 돌되 파일은 덮어쓰지 않는다.
         let (config, config_error) = match config::load_or_create(&config_path) {
             Ok(c) => (c, None),
             Err(e) => (Config::default_config(), Some(e.to_string())),
         };
+        sync_lang(&config);
 
         let state = Arc::new(Mutex::new(State {
             config: config.clone(),
@@ -189,8 +206,10 @@ impl Runtime {
             config::watch(&config_path, config, move |result| {
                 let effects = {
                     let mut s = state.lock().unwrap();
+                    let mut lang = None;
                     let changed = match result {
                         Ok(config) => {
+                            lang = sync_lang(&config);
                             s.deck.on_config_changed(&config);
                             s.config = config.clone();
                             s.config_error = None;
@@ -206,6 +225,7 @@ impl Runtime {
                         tray: Some(s.view()),
                         osd_refresh: changed.is_some().then(|| s.payload(None, None)),
                         config_changed: changed,
+                        lang,
                         ..Effects::default()
                     }
                 };
@@ -264,6 +284,10 @@ impl Runtime {
         );
     }
 
+    pub fn lang(&self) -> Lang {
+        i18n::current()
+    }
+
     pub fn mode(&self) -> Mode {
         self.state.lock().unwrap().mode()
     }
@@ -285,6 +309,7 @@ impl Runtime {
     /// 감시를 기다리지 않고 바로 반영한다 (감시가 같은 내용을 다시 읽어도 무해하다).
     pub fn save_config(&self, config: Config) -> Result<(), String> {
         config::save(&self.config_path, &config).map_err(|e| e.to_string())?;
+        let lang = sync_lang(&config);
         let effects = {
             let mut s = self.state.lock().unwrap();
             s.deck.on_config_changed(&config);
@@ -293,6 +318,7 @@ impl Runtime {
             Effects {
                 tray: Some(s.view()),
                 osd_refresh: Some(s.payload(None, None)),
+                lang,
                 ..Effects::default()
             }
         };
@@ -350,12 +376,13 @@ impl Runtime {
 
     /// 재생 중인 효과음을 모두 멈춘다 (트레이 메뉴).
     pub fn stop_sounds(&self) {
-        self.executor.submit("효과음 멈추기", Action::StopSounds);
+        self.executor
+            .submit(tr("효과음 멈추기", "Stop sounds"), Action::StopSounds);
     }
 
     pub fn open_config(&self) {
         self.executor.submit(
-            "설정 파일 열기",
+            tr("설정 파일 열기", "Open config file"),
             Action::Open {
                 target: self.config_path.to_string_lossy().into_owned(),
             },
@@ -472,7 +499,13 @@ fn exec_loop(events: Receiver<ExecEvent>, state: &Mutex<State>, ui: &Mutex<Ui>) 
                 let s = state.lock().unwrap();
                 Effects {
                     osd: Some((
-                        s.payload(s.last_button, Some(format!("\"{label}\" 실패: {error}"))),
+                        s.payload(
+                            s.last_button,
+                            Some(tr(
+                                format!("\"{label}\" 실패: {error}"),
+                                format!("\"{label}\" failed: {error}"),
+                            )),
+                        ),
                         Show::For(osd::ERROR),
                     )),
                     ..Effects::default()
@@ -500,6 +533,10 @@ fn apply_inner(ui: &Mutex<Ui>, effects: Effects) {
         }
         if let Some(view) = &effects.tray {
             let _ = app.emit_to(crate::editor::LABEL, MODE_CHANGED, view.mode);
+        }
+        if let Some(lang) = effects.lang {
+            let _ = app.emit(LANG_CHANGED, lang);
+            crate::editor::retitle(app);
         }
     }
     if let (Some(tray), Some(view)) = (tray, effects.tray) {

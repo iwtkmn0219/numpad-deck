@@ -1,7 +1,16 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { CircleHelp, Redo2, Undo2 } from "lucide-react";
+import { CircleHelp, Globe, Redo2, Undo2 } from "lucide-react";
+import type { Config } from "@/bindings/Config";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useT } from "@/i18n";
 import { installDeckKeyForwarding } from "./api";
 import { ButtonPanel } from "./ButtonPanel";
@@ -47,6 +56,7 @@ export function Editor() {
           <Button variant="ghost" size="icon-sm" onClick={redo} disabled={!canRedo} title={`${t.redo} (Ctrl+Y)`}>
             <Redo2 />
           </Button>
+          <LanguageMenu config={config} update={update} />
           <Button variant="ghost" size="icon-sm" onClick={() => setOnboarding(true)} title={t.help}>
             <CircleHelp />
           </Button>
@@ -75,6 +85,34 @@ export function Editor() {
         />
       )}
     </div>
+  );
+}
+
+/** 언어: 자동(Windows 표시 언어) / 한국어 / English. 설정 파일의 `language`에 저장한다. */
+function LanguageMenu({ config, update }: { config: Config; update: (recipe: (draft: Config) => void) => void }) {
+  const t = useT().editor.language;
+  const value = config.language ?? "auto";
+  const choose = (v: string) =>
+    update((c) => {
+      if (v === "ko" || v === "en") c.language = v;
+      else delete c.language;
+    });
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon-sm" title={t.label}>
+          <Globe />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>{t.label}</DropdownMenuLabel>
+        <DropdownMenuRadioGroup value={value} onValueChange={choose}>
+          <DropdownMenuRadioItem value="auto">{t.auto}</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="ko">{t.ko}</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="en">{t.en}</DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

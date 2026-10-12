@@ -1,4 +1,4 @@
-// 한국어 UI 문자열. 영어(en.ts)는 3-6에서 같은 모양으로 추가한다.
+// 한국어 UI 문자열. 영어(en.ts)도 같은 모양이어야 한다 (`Dict`).
 
 export const ko = {
   system: {
@@ -68,6 +68,7 @@ export const ko = {
   editor: {
     windowTitle: "Numpad Deck 설정",
     help: "사용법 다시 보기",
+    language: { label: "언어", auto: "자동 (Windows 언어)", ko: "한국어", en: "English" },
     addPage: "페이지 추가",
     addEmptyPage: "빈 페이지",
     addPresetPage: "프리셋에서 고르기…",

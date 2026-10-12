@@ -126,13 +126,21 @@ fn run_one(action: &Action, audio: &Audio, events: &Sender<ExecEvent>) -> Result
             thread::sleep(Duration::from_millis(*ms));
             Ok(())
         }
-        Action::Sequence { .. } => Err("묶음 안에 다시 묶음을 넣을 수 없습니다.".into()),
+        Action::Sequence { .. } => Err(crate::i18n::tr(
+            "묶음 안에 다시 묶음을 넣을 수 없습니다.",
+            "A sequence cannot contain another sequence.",
+        )),
     }
 }
 
 /// `SendInput`이 실패하는 경우는 사실상 관리자 권한 창에 막힌 경우뿐이다.
 fn blocked(e: windows::core::Error) -> String {
-    format!("입력을 보내지 못했습니다. 관리자 권한으로 실행 중인 창에는 보낼 수 없습니다. ({e})")
+    crate::i18n::tr(
+        format!(
+            "입력을 보내지 못했습니다. 관리자 권한으로 실행 중인 창에는 보낼 수 없습니다. ({e})"
+        ),
+        format!("Could not send input. Windows running as administrator cannot receive it. ({e})"),
+    )
 }
 
 fn media_vk(command: MediaCommand) -> u16 {

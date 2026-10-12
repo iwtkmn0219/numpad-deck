@@ -11,6 +11,7 @@
 //! 맞추는데, 전체 화면 앱에서 Win 키로 작업 표시줄을 불러오면 작업 표시줄이 메뉴보다 위에
 //! 그려져 아래 항목(종료)이 가려진다. 그래서 메뉴를 작업 영역 안(작업 표시줄 바깥)에 둔다.
 
+use deck_core::i18n::tr;
 use tauri::image::Image;
 use tauri::menu::{CheckMenuItem, ContextMenu, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
@@ -54,18 +55,23 @@ pub struct Tray {
     status: MenuItem<Wry>,
     error: MenuItem<Wry>,
     pause: CheckMenuItem<Wry>,
+    /// 언어가 바뀌면 글자를 다시 쓰는 항목들
+    editor: MenuItem<Wry>,
+    stop_sounds: MenuItem<Wry>,
+    open: MenuItem<Wry>,
+    quit: MenuItem<Wry>,
 }
 
 impl Tray {
     pub fn create(app: &AppHandle, view: &View) -> tauri::Result<Tray> {
         let status = MenuItem::with_id(app, "status", "", false, None::<&str>)?;
         let error = MenuItem::with_id(app, "error", "", false, None::<&str>)?;
-        let editor = MenuItem::with_id(app, MENU_EDITOR, "설정 열기", true, None::<&str>)?;
-        let pause = CheckMenuItem::with_id(app, MENU_PAUSE, "일시정지", true, false, None::<&str>)?;
-        let stop_sounds =
-            MenuItem::with_id(app, MENU_STOP_SOUNDS, "효과음 멈추기", true, None::<&str>)?;
-        let open = MenuItem::with_id(app, MENU_OPEN_CONFIG, "설정 파일 열기", true, None::<&str>)?;
-        let quit = MenuItem::with_id(app, MENU_QUIT, "종료", true, None::<&str>)?;
+        // 글자는 `update`가 지금 언어로 쓴다.
+        let editor = MenuItem::with_id(app, MENU_EDITOR, "", true, None::<&str>)?;
+        let pause = CheckMenuItem::with_id(app, MENU_PAUSE, "", true, false, None::<&str>)?;
+        let stop_sounds = MenuItem::with_id(app, MENU_STOP_SOUNDS, "", true, None::<&str>)?;
+        let open = MenuItem::with_id(app, MENU_OPEN_CONFIG, "", true, None::<&str>)?;
+        let quit = MenuItem::with_id(app, MENU_QUIT, "", true, None::<&str>)?;
         let menu = Menu::with_items(
             app,
             &[
@@ -108,6 +114,10 @@ impl Tray {
             status,
             error,
             pause,
+            editor,
+            stop_sounds,
+            open,
+            quit,
         };
         tray.update(view);
         Ok(tray)
@@ -116,10 +126,17 @@ impl Tray {
     /// 아이콘·툴팁·메뉴를 상태에 맞춘다. 어느 스레드에서 불러도 된다.
     pub fn update(&self, view: &View) {
         let mode = match view.mode {
-            Mode::Numbers => "숫자 모드 (NumLock 켜짐)",
-            Mode::Deck => "덱 모드",
-            Mode::Paused => "일시정지됨",
+            Mode::Numbers => tr("숫자 모드 (NumLock 켜짐)", "Number mode (NumLock on)"),
+            Mode::Deck => tr("덱 모드", "Deck mode"),
+            Mode::Paused => tr("일시정지됨", "Paused"),
         };
+        let _ = self.editor.set_text(tr("설정 열기", "Open settings"));
+        let _ = self.pause.set_text(tr("일시정지", "Pause"));
+        let _ = self
+            .stop_sounds
+            .set_text(tr("효과음 멈추기", "Stop sounds"));
+        let _ = self.open.set_text(tr("설정 파일 열기", "Open config file"));
+        let _ = self.quit.set_text(tr("종료", "Quit"));
         let status = format!("{mode} · {}", view.page);
         let _ = self.icon.set_icon(Some(icon(view.mode)));
         let _ = self
@@ -131,10 +148,13 @@ impl Tray {
             Some(e) => {
                 // 메뉴 한 줄에 다 들어가지 않으므로 앞부분만 보인다.
                 let short: String = e.chars().take(60).collect();
-                let _ = self.error.set_text(format!("⚠ 설정 오류: {short}"));
+                let _ = self.error.set_text(tr(
+                    format!("⚠ 설정 오류: {short}"),
+                    format!("⚠ Config error: {short}"),
+                ));
             }
             None => {
-                let _ = self.error.set_text("설정 정상");
+                let _ = self.error.set_text(tr("설정 정상", "Config OK"));
             }
         }
     }

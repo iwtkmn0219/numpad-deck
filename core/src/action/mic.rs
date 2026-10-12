@@ -7,6 +7,7 @@
 //! 여기서 바꾸는 것은 Windows 오디오 엔진의 음소거다. ASIO나 WASAPI 배타 모드로 장치를
 //! 직접 여는 앱(DAW, 일부 방송 설정)은 이를 거치지 않으므로 음소거되지 않는다.
 
+use crate::i18n::tr;
 use windows::core::PCWSTR;
 use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
 use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
@@ -23,13 +24,21 @@ pub fn toggle_mute() -> Result<bool, String> {
         let enumerator = enumerator()?;
         let devices = enumerator
             .EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE)
-            .map_err(|e| format!("녹음 장치 목록을 읽을 수 없습니다: {e}"))?;
+            .map_err(|e| {
+                tr(
+                    format!("녹음 장치 목록을 읽을 수 없습니다: {e}"),
+                    format!("Cannot list recording devices: {e}"),
+                )
+            })?;
         let volumes: Vec<IAudioEndpointVolume> = (0..devices.GetCount().unwrap_or(0))
             .filter_map(|i| devices.Item(i).ok())
             .filter_map(|d| endpoint_volume(&d).ok())
             .collect();
         if volumes.is_empty() {
-            return Err("연결된 마이크가 없습니다.".into());
+            return Err(tr(
+                "연결된 마이크가 없습니다.",
+                "No microphone is connected.",
+            ));
         }
         let any_on = volumes
             .iter()
@@ -40,7 +49,10 @@ pub fn toggle_mute() -> Result<bool, String> {
             .filter(|v| v.SetMute(mute, std::ptr::null()).is_ok())
             .count();
         if changed == 0 {
-            return Err("마이크 음소거를 바꿀 수 없습니다.".into());
+            return Err(tr(
+                "마이크 음소거를 바꿀 수 없습니다.",
+                "Cannot change the microphone mute.",
+            ));
         }
         Ok(mute)
     }
@@ -111,18 +123,30 @@ pub fn set_mute(id: &str, muted: bool) -> Result<(), String> {
     unsafe {
         let enumerator = enumerator()?;
         let wide: Vec<u16> = id.encode_utf16().chain(std::iter::once(0)).collect();
-        let device = enumerator
-            .GetDevice(PCWSTR(wide.as_ptr()))
-            .map_err(|e| format!("장치를 찾을 수 없습니다: {e}"))?;
+        let device = enumerator.GetDevice(PCWSTR(wide.as_ptr())).map_err(|e| {
+            tr(
+                format!("장치를 찾을 수 없습니다: {e}"),
+                format!("Device not found: {e}"),
+            )
+        })?;
         endpoint_volume(&device)?
             .SetMute(muted, std::ptr::null())
-            .map_err(|e| format!("음소거를 바꿀 수 없습니다: {e}"))
+            .map_err(|e| {
+                tr(
+                    format!("음소거를 바꿀 수 없습니다: {e}"),
+                    format!("Cannot change mute: {e}"),
+                )
+            })
     }
 }
 
 unsafe fn enumerator() -> Result<IMMDeviceEnumerator, String> {
-    unsafe { CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL) }
-        .map_err(|e| format!("오디오 장치 목록을 열 수 없습니다: {e}"))
+    unsafe { CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL) }.map_err(|e| {
+        tr(
+            format!("오디오 장치 목록을 열 수 없습니다: {e}"),
+            format!("Cannot open the audio device list: {e}"),
+        )
+    })
 }
 
 unsafe fn device_id(device: &IMMDevice) -> Option<String> {
@@ -135,6 +159,10 @@ unsafe fn device_id(device: &IMMDevice) -> Option<String> {
 }
 
 unsafe fn endpoint_volume(device: &IMMDevice) -> Result<IAudioEndpointVolume, String> {
-    unsafe { device.Activate(CLSCTX_ALL, None) }
-        .map_err(|e| format!("마이크 볼륨 제어를 열 수 없습니다: {e}"))
+    unsafe { device.Activate(CLSCTX_ALL, None) }.map_err(|e| {
+        tr(
+            format!("마이크 볼륨 제어를 열 수 없습니다: {e}"),
+            format!("Cannot open microphone volume control: {e}"),
+        )
+    })
 }

@@ -222,14 +222,19 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
           </div>
 
           <div className="min-w-0 flex-1 space-y-3 text-sm">
-            <ul className="space-y-1.5 text-xs text-muted-foreground">
-              <li className="flex items-center gap-2">
-                <span className="size-3.5 shrink-0 rounded border bg-card" /> {t.legendButton}
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="size-3.5 shrink-0 rounded border border-amber-500/50 bg-amber-500/15" />
-                {t.legendSystem}
-              </li>
+            <ul className="space-y-2 text-xs">
+              {[
+                ["border bg-card", t.legendButton],
+                ["border border-amber-500/50 bg-amber-500/15", t.legendSystem],
+              ].map(([swatch, [title, body]]) => (
+                <li key={title} className="flex items-start gap-2">
+                  <span className={cn("mt-0.5 size-3.5 shrink-0 rounded", swatch)} />
+                  <span>
+                    <span className="block font-medium">{title}</span>
+                    <span className="block text-muted-foreground">{body}</span>
+                  </span>
+                </li>
+              ))}
             </ul>
             {current ? (
               <>

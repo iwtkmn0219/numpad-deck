@@ -127,4 +127,9 @@
   html {
     @apply font-sans;
   }
+  /* 한국어는 낱말 중간에서 줄을 바꾸지 않는다 ("고르 / 기…" 방지). 너무 긴 낱말만 끊는다. */
+  html:lang(ko) body {
+    word-break: keep-all;
+    overflow-wrap: break-word;
+  }
 }

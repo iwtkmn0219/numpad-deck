@@ -307,6 +307,14 @@ impl Runtime {
         );
     }
 
+    /// 트레이 Windows 시작 시 실행 체크를 실제 상태에 맞춘다.
+    pub fn set_autostart_checked(&self, on: bool) {
+        let tray = self.ui.lock().unwrap().tray.clone();
+        if let Some(tray) = tray {
+            tray.set_autostart(on);
+        }
+    }
+
     pub fn lang(&self) -> Lang {
         i18n::current()
     }
@@ -401,6 +409,22 @@ impl Runtime {
     pub fn stop_sounds(&self) {
         self.executor
             .submit(tr("효과음 멈추기", "Stop sounds"), Action::StopSounds);
+    }
+
+    pub fn config_path(&self) -> &std::path::Path {
+        &self.config_path
+    }
+
+    /// 설정 파일이 있는 폴더를 탐색기로 연다 (백업·공유용).
+    pub fn open_config_folder(&self) {
+        if let Some(dir) = self.config_path.parent() {
+            self.executor.submit(
+                tr("설정 폴더 열기", "Open config folder"),
+                Action::Open {
+                    target: dir.to_string_lossy().into_owned(),
+                },
+            );
+        }
     }
 
     pub fn open_config(&self) {

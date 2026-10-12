@@ -1,2 +1,9 @@
 /target
 *.log
+
+# 수동 시험 결과(개인 기록)는 로컬에만 둔다
+docs/*-checklist.md
+
+# 개인 작업 방식 (Claude Code)
+CLAUDE.local.md
+.claude/settings.local.json

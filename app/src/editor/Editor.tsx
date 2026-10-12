@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { CircleHelp, Globe, LayoutGrid, Redo2, Undo2 } from "lucide-react";
+import { CircleHelp, Globe, LayoutGrid, Redo2, Settings, Undo2 } from "lucide-react";
 import type { Config } from "@/bindings/Config";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,6 +17,7 @@ import { ButtonPanel } from "./ButtonPanel";
 import { gridFor } from "@/shared/layout";
 import { KeyGrid, type Selection } from "./KeyGrid";
 import { LayoutEditor } from "./LayoutEditor";
+import { SettingsDialog } from "./SettingsDialog";
 import { Onboarding } from "./Onboarding";
 import { chooseLanguage, type LanguageChoice } from "./language";
 import { PageTabs } from "./PageTabs";
@@ -30,6 +31,7 @@ export function Editor() {
 
   const [onboarding, setOnboarding] = useState(false);
   const [layoutOpen, setLayoutOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // 편집기가 앞에 있을 때도 넘패드 덱 키가 동작하게
   useEffect(() => installDeckKeyForwarding(), []);
@@ -67,6 +69,9 @@ export function Editor() {
           <Button variant="ghost" size="icon-sm" onClick={() => setOnboarding(true)} title={t.help}>
             <CircleHelp />
           </Button>
+          <Button variant="ghost" size="icon-sm" onClick={() => setSettingsOpen(true)} title={t.settings.button}>
+            <Settings />
+          </Button>
         </div>
       </header>
 
@@ -81,6 +86,7 @@ export function Editor() {
         </aside>
       </main>
 
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       <LayoutEditor open={layoutOpen} onOpenChange={setLayoutOpen} config={config} update={update} />
 
       {onboarding && (

@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import process from "node:process";
 const host = process.env.TAURI_DEV_HOST;
 
-// 창마다 HTML 진입점을 따로 둔다: index.html(설정 편집기, 3단계), osd.html(OSD).
+// 창마다 HTML 진입점을 따로 둔다: index.html(설정 편집기), osd.html(OSD).
 export default defineConfig(() => ({
   plugins: [react(), tailwindcss()],
   resolve: {

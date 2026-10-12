@@ -17,4 +17,9 @@ layout?: Array<KeyPlace>,
  * 시스템 키 네 개(`/` `*` `-` `.`)의 역할. 없으면 `/` 이전, `*` 다음, `-` OSD, `.` 처음.
  * 네 키 안에서만 서로 바꾼다 (버튼 12개는 그대로).
  */
-systemKeys?: SystemKeys, pages: Array<Page>, };
+systemKeys?: SystemKeys, 
+/**
+ * 마이크가 꺼져 있는 동안 화면 위에 배지·트레이에 빨간 점을 보인다. 없으면 켬.
+ * 마이크 버튼(`micMute`)이 하나도 없으면 켜 둬도 보이지 않는다.
+ */
+micIndicator?: boolean, pages: Array<Page>, };

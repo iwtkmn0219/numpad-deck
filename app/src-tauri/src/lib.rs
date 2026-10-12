@@ -4,6 +4,7 @@
 //! 클릭으로 편집기를 열고, 오른쪽 클릭 메뉴로 일시정지·종료 등을 한다.
 
 mod editor;
+mod mic_badge;
 mod osd;
 mod runtime;
 mod theme;
@@ -303,7 +304,8 @@ pub fn run() {
                 .map_err(|e| eprintln!("OSD 창을 만들 수 없습니다: {e}"))
                 .ok()
                 .map(Arc::new);
-            runtime.attach_ui(app.handle().clone(), tray, osd);
+            let mic_badge = Arc::new(mic_badge::MicBadge::new());
+            runtime.attach_ui(app.handle().clone(), tray, osd, mic_badge);
             // 첫 실행: 편집기를 열어 온보딩을 보여준다.
             let first_run = runtime.onboarding_pending();
             app.manage(runtime);
@@ -314,9 +316,11 @@ pub fn run() {
             {
                 let app = app.handle().clone();
                 theme::watch(move || {
-                    if let Some(tray) = app.state::<Arc<Runtime>>().tray() {
+                    let runtime = app.state::<Arc<Runtime>>();
+                    if let Some(tray) = runtime.tray() {
                         tray.refresh_icon();
                     }
+                    runtime.reposition_mic_badge();
                 });
             }
             let autostarted = std::env::args().any(|a| a == AUTOSTART_ARG);

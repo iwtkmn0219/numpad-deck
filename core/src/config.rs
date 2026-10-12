@@ -28,8 +28,6 @@ pub const VERSION: u32 = 1;
 /// 묶음 안 지연 시간의 상한. 실수로 큰 값을 넣어 버튼이 멈춘 듯 보이는 것을 막는다.
 pub const MAX_DELAY_MS: u64 = 60_000;
 
-const DEFAULT_JSON: &str = include_str!("default_config.json");
-
 // TypeScript 타입(`app/src/bindings/*.ts`)은 `cargo test`가 만든다 (ts-rs). 타입을 바꾸면
 // `cargo test -p numpad-deck-core`를 돌려 다시 만들고 함께 커밋한다.
 
@@ -214,7 +212,8 @@ impl<'de> Deserialize<'de> for ButtonKey {
 impl Config {
     /// 첫 실행 때 만드는 기본 설정.
     pub fn default_config() -> Config {
-        parse(DEFAULT_JSON).expect("내장 기본 설정은 항상 올바르다")
+        // 언어 선택은 3-6에서 붙인다.
+        crate::presets::default_config(crate::presets::Lang::Ko)
     }
 
     /// 현재 페이지에서 키에 해당하는 버튼.
@@ -471,7 +470,7 @@ mod tests {
     fn default_config_is_valid_and_round_trips() {
         let config = Config::default_config();
         assert_eq!(config.version, VERSION);
-        assert!(config.pages.len() >= 2);
+        assert!(!config.pages.is_empty());
         let text = serde_json::to_string_pretty(&config).unwrap();
         assert_eq!(parse(&text).unwrap(), config);
     }

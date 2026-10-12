@@ -1,0 +1,132 @@
+{
+  "name": {
+    "ko": "Google Meet 회의",
+    "en": "Google Meet"
+  },
+  "description": {
+    "ko": "Google Meet 기본 단축키: 마이크·카메라·손 들기·채팅. 브라우저의 Meet 탭이 앞에 있을 때 동작해요.",
+    "en": "Google Meet default shortcuts: mic, camera, raise hand, chat. Works while the Meet tab is in front."
+  },
+  "buttons": {
+    "7": {
+      "label": {
+        "ko": "마이크",
+        "en": "Mic"
+      },
+      "icon": "mic",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "Ctrl",
+          "D"
+        ]
+      }
+    },
+    "8": {
+      "label": {
+        "ko": "카메라",
+        "en": "Camera"
+      },
+      "icon": "video",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "Ctrl",
+          "E"
+        ]
+      }
+    },
+    "9": {
+      "label": {
+        "ko": "손 들기",
+        "en": "Raise hand"
+      },
+      "icon": "hand",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "Ctrl",
+          "Alt",
+          "H"
+        ]
+      }
+    },
+    "+": {
+      "label": {
+        "ko": "채팅",
+        "en": "Chat"
+      },
+      "icon": "message-circle",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "Ctrl",
+          "Alt",
+          "C"
+        ]
+      }
+    },
+    "4": {
+      "label": {
+        "ko": "볼륨 -",
+        "en": "Volume -"
+      },
+      "icon": "volume-1",
+      "action": {
+        "type": "media",
+        "command": "volumeDown"
+      }
+    },
+    "5": {
+      "label": {
+        "ko": "모든 마이크 끄기",
+        "en": "Mute all mics"
+      },
+      "icon": "mic-off",
+      "action": {
+        "type": "micMute"
+      }
+    },
+    "6": {
+      "label": {
+        "ko": "볼륨 +",
+        "en": "Volume +"
+      },
+      "icon": "volume-2",
+      "action": {
+        "type": "media",
+        "command": "volumeUp"
+      }
+    },
+    "1": {
+      "label": {
+        "ko": "참가자",
+        "en": "People"
+      },
+      "icon": "users",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "Ctrl",
+          "Alt",
+          "P"
+        ]
+      }
+    },
+    "Enter": {
+      "label": {
+        "ko": "화면 캡처",
+        "en": "Screenshot"
+      },
+      "icon": "camera",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "Win",
+          "Shift",
+          "S"
+        ]
+      }
+    }
+  }
+}

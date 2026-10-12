@@ -13,6 +13,7 @@ use std::sync::Arc;
 use deck_core::action::apps::AppEntry;
 use deck_core::config::{Action, Config};
 use deck_core::key::{NumpadKey, RawKey};
+use deck_core::presets::{self, Lang, Preset};
 use tauri::{Manager, State};
 
 use osd::Osd;
@@ -74,6 +75,12 @@ fn press_deck_key(runtime: State<'_, Arc<Runtime>>, key: String) {
     }
 }
 
+/// 프리셋 목록 (편집기의 "프리셋에서 추가", 온보딩).
+#[tauri::command]
+fn list_presets(lang: Lang) -> Vec<Preset> {
+    presets::all(lang)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -91,7 +98,8 @@ pub fn run() {
             start_recording,
             cancel_recording,
             record_key,
-            press_deck_key
+            press_deck_key,
+            list_presets
         ])
         .setup(|app| {
             let runtime = Arc::new(Runtime::start()?);

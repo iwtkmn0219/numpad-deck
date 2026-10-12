@@ -1,0 +1,162 @@
+{
+  "name": {
+    "ko": "방송(OBS)",
+    "en": "Streaming (OBS)"
+  },
+  "description": {
+    "ko": "장면 1–6, 녹화·방송 시작/중지. OBS 설정 → 단축키에서 각 항목 칸을 누른 뒤 이 페이지의 넘패드 버튼을 누르면 F13–F22가 지정돼요.",
+    "en": "Scenes 1–6, start/stop recording and streaming. In OBS Settings → Hotkeys, click a field and press the numpad button here to assign F13–F22."
+  },
+  "buttons": {
+    "7": {
+      "label": {
+        "ko": "장면 1",
+        "en": "Scene 1"
+      },
+      "icon": "clapperboard",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "F13"
+        ]
+      }
+    },
+    "8": {
+      "label": {
+        "ko": "장면 2",
+        "en": "Scene 2"
+      },
+      "icon": "clapperboard",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "F14"
+        ]
+      }
+    },
+    "9": {
+      "label": {
+        "ko": "장면 3",
+        "en": "Scene 3"
+      },
+      "icon": "clapperboard",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "F15"
+        ]
+      }
+    },
+    "+": {
+      "label": {
+        "ko": "방송 시작/중지",
+        "en": "Stream on/off"
+      },
+      "icon": "radio",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "F22"
+        ]
+      }
+    },
+    "4": {
+      "label": {
+        "ko": "장면 4",
+        "en": "Scene 4"
+      },
+      "icon": "clapperboard",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "F16"
+        ]
+      }
+    },
+    "5": {
+      "label": {
+        "ko": "장면 5",
+        "en": "Scene 5"
+      },
+      "icon": "clapperboard",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "F17"
+        ]
+      }
+    },
+    "6": {
+      "label": {
+        "ko": "장면 6",
+        "en": "Scene 6"
+      },
+      "icon": "clapperboard",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "F18"
+        ]
+      }
+    },
+    "1": {
+      "label": {
+        "ko": "녹화 시작/중지",
+        "en": "Record on/off"
+      },
+      "icon": "circle-dot",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "F19"
+        ]
+      }
+    },
+    "2": {
+      "label": {
+        "ko": "녹화 일시정지",
+        "en": "Pause recording"
+      },
+      "icon": "pause",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "F20"
+        ]
+      }
+    },
+    "3": {
+      "label": {
+        "ko": "리플레이 저장",
+        "en": "Save replay"
+      },
+      "icon": "rotate-ccw",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "F21"
+        ]
+      }
+    },
+    "Enter": {
+      "label": {
+        "ko": "모든 마이크 끄기",
+        "en": "Mute all mics"
+      },
+      "icon": "mic-off",
+      "action": {
+        "type": "micMute"
+      }
+    },
+    "0": {
+      "label": {
+        "ko": "효과음 멈추기",
+        "en": "Stop sounds"
+      },
+      "icon": "volume-off",
+      "action": {
+        "type": "stopSounds"
+      }
+    }
+  }
+}

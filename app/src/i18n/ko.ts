@@ -17,6 +17,13 @@ export const ko = {
   editor: {
     windowTitle: "Numpad Deck 설정",
     addPage: "페이지 추가",
+    addEmptyPage: "빈 페이지",
+    addPresetPage: "프리셋에서 고르기…",
+    presets: {
+      title: "프리셋에서 페이지 추가",
+      body: "자주 쓰는 버튼을 모아 둔 페이지예요. 추가한 뒤 자유롭게 고칠 수 있어요.",
+      add: (name: string) => `"${name}" 추가`,
+    },
     newPageName: "새 페이지",
     pageMenu: {
       rename: "이름 바꾸기",

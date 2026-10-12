@@ -1,0 +1,179 @@
+{
+  "name": {
+    "ko": "창 관리·업무",
+    "en": "Windows & Work"
+  },
+  "description": {
+    "ko": "창 반쪽 배치·최대화, 가상 데스크톱, 복사·붙여넣기, 탐색기·계산기",
+    "en": "Snap and maximize windows, virtual desktops, copy/paste, Explorer, Calculator"
+  },
+  "buttons": {
+    "7": {
+      "label": {
+        "ko": "왼쪽 반",
+        "en": "Snap left"
+      },
+      "icon": "panel-left",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "Win",
+          "Left"
+        ]
+      }
+    },
+    "8": {
+      "label": {
+        "ko": "최대화",
+        "en": "Maximize"
+      },
+      "icon": "maximize",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "Win",
+          "Up"
+        ]
+      }
+    },
+    "9": {
+      "label": {
+        "ko": "오른쪽 반",
+        "en": "Snap right"
+      },
+      "icon": "panel-right",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "Win",
+          "Right"
+        ]
+      }
+    },
+    "+": {
+      "label": {
+        "ko": "작업 보기",
+        "en": "Task view"
+      },
+      "icon": "layout-grid",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "Win",
+          "Tab"
+        ]
+      }
+    },
+    "4": {
+      "label": {
+        "ko": "데스크톱 ←",
+        "en": "Desktop ←"
+      },
+      "icon": "arrow-left",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "Ctrl",
+          "Win",
+          "Left"
+        ]
+      }
+    },
+    "5": {
+      "label": {
+        "ko": "최소화",
+        "en": "Minimize"
+      },
+      "icon": "minimize",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "Win",
+          "Down"
+        ]
+      }
+    },
+    "6": {
+      "label": {
+        "ko": "데스크톱 →",
+        "en": "Desktop →"
+      },
+      "icon": "arrow-right",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "Ctrl",
+          "Win",
+          "Right"
+        ]
+      }
+    },
+    "1": {
+      "label": {
+        "ko": "복사",
+        "en": "Copy"
+      },
+      "icon": "copy",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "Ctrl",
+          "C"
+        ]
+      }
+    },
+    "2": {
+      "label": {
+        "ko": "붙여넣기",
+        "en": "Paste"
+      },
+      "icon": "clipboard",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "Ctrl",
+          "V"
+        ]
+      }
+    },
+    "3": {
+      "label": {
+        "ko": "클립보드 기록",
+        "en": "Clipboard history"
+      },
+      "icon": "clipboard-list",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "Win",
+          "V"
+        ]
+      }
+    },
+    "Enter": {
+      "label": {
+        "ko": "탐색기",
+        "en": "Explorer"
+      },
+      "icon": "folder",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "Win",
+          "E"
+        ]
+      }
+    },
+    "0": {
+      "label": {
+        "ko": "계산기",
+        "en": "Calculator"
+      },
+      "icon": "calculator",
+      "action": {
+        "type": "launch",
+        "target": "shell:AppsFolder\\Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"
+      }
+    }
+  }
+}

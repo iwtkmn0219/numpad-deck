@@ -1,0 +1,134 @@
+{
+  "name": {
+    "ko": "Teams 회의",
+    "en": "Teams meeting"
+  },
+  "description": {
+    "ko": "Microsoft Teams 기본 단축키: 마이크·카메라·화면 공유·손 들기. Teams 창이 앞에 있을 때 동작해요.",
+    "en": "Microsoft Teams default shortcuts: mic, camera, share, raise hand. Works while Teams is in front."
+  },
+  "buttons": {
+    "7": {
+      "label": {
+        "ko": "마이크",
+        "en": "Mic"
+      },
+      "icon": "mic",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "Ctrl",
+          "Shift",
+          "M"
+        ]
+      }
+    },
+    "8": {
+      "label": {
+        "ko": "카메라",
+        "en": "Camera"
+      },
+      "icon": "video",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "Ctrl",
+          "Shift",
+          "O"
+        ]
+      }
+    },
+    "9": {
+      "label": {
+        "ko": "화면 공유",
+        "en": "Share"
+      },
+      "icon": "screen-share",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "Ctrl",
+          "Shift",
+          "E"
+        ]
+      }
+    },
+    "+": {
+      "label": {
+        "ko": "손 들기",
+        "en": "Raise hand"
+      },
+      "icon": "hand",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "Ctrl",
+          "Shift",
+          "K"
+        ]
+      }
+    },
+    "4": {
+      "label": {
+        "ko": "볼륨 -",
+        "en": "Volume -"
+      },
+      "icon": "volume-1",
+      "action": {
+        "type": "media",
+        "command": "volumeDown"
+      }
+    },
+    "5": {
+      "label": {
+        "ko": "모든 마이크 끄기",
+        "en": "Mute all mics"
+      },
+      "icon": "mic-off",
+      "action": {
+        "type": "micMute"
+      }
+    },
+    "6": {
+      "label": {
+        "ko": "볼륨 +",
+        "en": "Volume +"
+      },
+      "icon": "volume-2",
+      "action": {
+        "type": "media",
+        "command": "volumeUp"
+      }
+    },
+    "1": {
+      "label": {
+        "ko": "화면 캡처",
+        "en": "Screenshot"
+      },
+      "icon": "camera",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "Win",
+          "Shift",
+          "S"
+        ]
+      }
+    },
+    "Enter": {
+      "label": {
+        "ko": "통화 끊기",
+        "en": "Hang up"
+      },
+      "icon": "phone-off",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "Ctrl",
+          "Shift",
+          "H"
+        ]
+      }
+    }
+  }
+}

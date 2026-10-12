@@ -1,0 +1,136 @@
+{
+  "name": {
+    "ko": "음악·영상",
+    "en": "Music & Video"
+  },
+  "description": {
+    "ko": "재생/정지, 이전·다음 곡, 볼륨",
+    "en": "Play/pause, previous/next track, volume"
+  },
+  "buttons": {
+    "7": {
+      "label": {
+        "ko": "이전 곡",
+        "en": "Previous"
+      },
+      "icon": "skip-back",
+      "action": {
+        "type": "media",
+        "command": "prev"
+      }
+    },
+    "8": {
+      "label": {
+        "ko": "재생/정지",
+        "en": "Play/Pause"
+      },
+      "icon": "play",
+      "action": {
+        "type": "media",
+        "command": "playPause"
+      }
+    },
+    "9": {
+      "label": {
+        "ko": "다음 곡",
+        "en": "Next"
+      },
+      "icon": "skip-forward",
+      "action": {
+        "type": "media",
+        "command": "next"
+      }
+    },
+    "+": {
+      "label": {
+        "ko": "음소거",
+        "en": "Mute"
+      },
+      "icon": "volume-x",
+      "action": {
+        "type": "media",
+        "command": "volumeMute"
+      }
+    },
+    "4": {
+      "label": {
+        "ko": "볼륨 -",
+        "en": "Volume -"
+      },
+      "icon": "volume-1",
+      "action": {
+        "type": "media",
+        "command": "volumeDown"
+      }
+    },
+    "5": {
+      "label": {
+        "ko": "정지",
+        "en": "Stop"
+      },
+      "icon": "square",
+      "action": {
+        "type": "media",
+        "command": "stop"
+      }
+    },
+    "6": {
+      "label": {
+        "ko": "볼륨 +",
+        "en": "Volume +"
+      },
+      "icon": "volume-2",
+      "action": {
+        "type": "media",
+        "command": "volumeUp"
+      }
+    },
+    "1": {
+      "label": {
+        "ko": "YouTube",
+        "en": "YouTube"
+      },
+      "icon": "tv",
+      "action": {
+        "type": "open",
+        "target": "https://www.youtube.com"
+      }
+    },
+    "2": {
+      "label": {
+        "ko": "음악 폴더",
+        "en": "Music folder"
+      },
+      "icon": "folder",
+      "action": {
+        "type": "open",
+        "target": "%USERPROFILE%\\Music"
+      }
+    },
+    "3": {
+      "label": {
+        "ko": "볼륨 믹서",
+        "en": "Volume mixer"
+      },
+      "icon": "sliders-horizontal",
+      "action": {
+        "type": "open",
+        "target": "ms-settings:apps-volume"
+      }
+    },
+    "Enter": {
+      "label": {
+        "ko": "바탕화면",
+        "en": "Desktop"
+      },
+      "icon": "monitor",
+      "action": {
+        "type": "hotkey",
+        "keys": [
+          "Win",
+          "D"
+        ]
+      }
+    }
+  }
+}

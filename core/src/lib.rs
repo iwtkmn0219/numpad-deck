@@ -6,6 +6,7 @@
 //! - [`config`]: 설정 파일(JSON) 스키마, 읽기·쓰기, 변경 감시.
 //! - [`deck`]: 현재 페이지와 디스패처 (순수 로직).
 //! - [`keys`]: 단축키의 키 이름 ↔ 가상 키 (순수 로직).
+//! - [`presets`]: 프리셋 페이지 (한국어·영어), 첫 실행 기본 설정.
 //! - [`record`]: 단축키 녹화 결과 만들기 (순수 로직).
 //! - [`action`]: 액션 실행기 (Windows 전용).
 //! - [`hook`]: 저수준 키보드 훅 전용 스레드 (Windows 전용).
@@ -17,6 +18,7 @@ pub mod gate;
 pub mod key;
 pub mod keys;
 pub mod layout;
+pub mod presets;
 pub mod record;
 
 #[cfg(windows)]

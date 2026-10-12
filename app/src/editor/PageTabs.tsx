@@ -22,6 +22,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { useT } from "@/i18n";
+import type { Page } from "@/bindings/Page";
+import { PresetDialog } from "./PresetDialog";
 
 interface Props {
   config: Config;
@@ -35,6 +37,7 @@ export function PageTabs({ config, page, onSelect, update }: Props) {
   const t = useT().editor;
   const [renaming, setRenaming] = useState<number | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [presetOpen, setPresetOpen] = useState(false);
   const pages = config.pages;
 
   const addPage = () => {
@@ -43,6 +46,14 @@ export function PageTabs({ config, page, onSelect, update }: Props) {
     });
     onSelect(pages.length);
     setRenaming(pages.length);
+  };
+
+  const addPresetPage = (page: Page) => {
+    setPresetOpen(false);
+    update((c) => {
+      c.pages.push(structuredClone(page));
+    });
+    onSelect(pages.length);
   };
 
   const move = (from: number, to: number) => {
@@ -130,9 +141,18 @@ export function PageTabs({ config, page, onSelect, update }: Props) {
           </DropdownMenu>
         </div>
       ))}
-      <Button variant="ghost" size="sm" className="mb-0.5 shrink-0" onClick={addPage}>
-        <Plus /> {t.addPage}
-      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="sm" className="mb-0.5 shrink-0">
+            <Plus /> {t.addPage}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          <DropdownMenuItem onSelect={addPage}>{t.addEmptyPage}</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setPresetOpen(true)}>{t.addPresetPage}</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <PresetDialog open={presetOpen} onOpenChange={setPresetOpen} onAdd={addPresetPage} />
 
       <AlertDialog open={target !== null} onOpenChange={(open) => !open && setDeleting(null)}>
         <AlertDialogContent>

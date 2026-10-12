@@ -59,6 +59,7 @@ impl State {
             mode: self.mode(),
             page: format!("{}/{} {name}", page + 1, self.config.pages.len()),
             config_error: self.config_error.clone(),
+            mic_muted: false,
         }
     }
 

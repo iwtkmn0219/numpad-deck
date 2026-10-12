@@ -41,6 +41,8 @@ pub struct View {
     pub page: String,
     /// 설정 파일 오류. 있으면 메뉴 맨 위에 보인다.
     pub config_error: Option<String>,
+    /// 마이크가 꺼져 있고 상시 표시가 켜져 있다 (아이콘 빨간 점, 메뉴 한 줄).
+    pub mic_muted: bool,
 }
 
 pub const MENU_EDITOR: &str = "editor";
@@ -66,8 +68,8 @@ pub struct Tray {
     /// 업데이트 확인/설치. 글자는 상태에 따라 바뀐다.
     update: MenuItem<Wry>,
     update_status: std::sync::Arc<std::sync::Mutex<crate::update::Status>>,
-    /// 마지막 모드 (작업 표시줄 밝기·배율이 바뀌면 같은 모드로 다시 그린다)
-    mode: std::sync::Arc<std::sync::Mutex<Mode>>,
+    /// 마지막 모드와 마이크 점 (작업 표시줄 밝기·배율이 바뀌면 같은 모습으로 다시 그린다)
+    mode: std::sync::Arc<std::sync::Mutex<(Mode, bool)>>,
     quit: MenuItem<Wry>,
 }
 
@@ -115,7 +117,7 @@ impl Tray {
         )?;
         let popup = menu.clone();
         let icon = TrayIconBuilder::with_id("main")
-            .icon(icon(view.mode))
+            .icon(icon(view.mode, view.mic_muted))
             // 메뉴를 붙여야 메뉴 명령이 트레이 창으로 전달된다. 띄우는 것은 직접 한다.
             .menu(&menu)
             // Windows 관례: 왼쪽 클릭 = 편집기, 오른쪽 클릭 = 메뉴
@@ -152,7 +154,7 @@ impl Tray {
                 crate::update::Status::Unavailable
             })),
             quit,
-            mode: std::sync::Arc::new(std::sync::Mutex::new(view.mode)),
+            mode: std::sync::Arc::new(std::sync::Mutex::new((view.mode, view.mic_muted))),
         };
         tray.update(view);
         Ok(tray)
@@ -165,8 +167,8 @@ impl Tray {
 
     /// 아이콘만 다시 그린다 (작업 표시줄 밝기·배율이 바뀌었을 때).
     pub fn refresh_icon(&self) {
-        let mode = *self.mode.lock().unwrap();
-        let _ = self.icon.set_icon(Some(icon(mode)));
+        let (mode, mic) = *self.mode.lock().unwrap();
+        let _ = self.icon.set_icon(Some(icon(mode, mic)));
     }
 
     /// 업데이트 메뉴를 상태에 맞춘다.
@@ -214,9 +216,12 @@ impl Tray {
             .set_text(tr("Windows 시작 시 실행", "Start with Windows"));
         self.render_update();
         let _ = self.quit.set_text(tr("종료", "Quit"));
-        let status = format!("{mode} · {}", view.page);
-        *self.mode.lock().unwrap() = view.mode;
-        let _ = self.icon.set_icon(Some(icon(view.mode)));
+        let mut status = format!("{mode} · {}", view.page);
+        if view.mic_muted {
+            status.push_str(&tr(" · 마이크 꺼짐", " · Mic muted"));
+        }
+        *self.mode.lock().unwrap() = (view.mode, view.mic_muted);
+        let _ = self.icon.set_icon(Some(icon(view.mode, view.mic_muted)));
         let _ = self
             .icon
             .set_tooltip(Some(format!("Numpad Deck — {status}")));
@@ -281,11 +286,12 @@ fn show_menu(tray: &TrayIcon, menu: &Menu<Wry>) {
 }
 
 /// 지금 작업 표시줄 배율·밝기에 맞춘 트레이 아이콘.
-pub fn icon(mode: Mode) -> Image<'static> {
+pub fn icon(mode: Mode, mic_muted: bool) -> Image<'static> {
     draw(
         mode,
         crate::theme::tray_icon_size(),
         crate::theme::taskbar_is_light(),
+        mic_muted,
     )
 }
 
@@ -300,7 +306,7 @@ const SPECS: [(u32, u32, u32, u32, bool, u32); 4] = [
 
 /// 3×3 칸: 덱 모드 = 아홉 칸 채움, 숫자 모드 = 테두리만, 일시정지 = 가운데 줄 빔. 바탕 투명.
 /// 색은 작업 표시줄 밝기에 맞춘다 (밝은 작업 표시줄에서 회색이 묻히지 않게).
-fn draw(mode: Mode, size: u32, light: bool) -> Image<'static> {
+fn draw(mode: Mode, size: u32, light: bool, mic_muted: bool) -> Image<'static> {
     // 표에 없는 크기는 바로 아래 크기 그림을 가운데에 놓는다
     let &(base, margin, cell, gap, cut, thick) = SPECS
         .iter()
@@ -345,7 +351,31 @@ fn draw(mode: Mode, size: u32, light: bool) -> Image<'static> {
             }
         }
     }
+    if mic_muted {
+        draw_mic_dot(&mut rgba, size);
+    }
     Image::new_owned(rgba, size, size)
+}
+
+/// 음소거 점 한 변 (16→5, 20→6, 24→7, 32→10)
+fn dot_size(size: u32) -> u32 {
+    size * 5 / 16
+}
+
+/// 오른쪽 아래에 빨간 점. 둘레 1px을 먼저 비워 칸과 떨어뜨리고, 6px 이상이면 귀퉁이를 깎는다.
+fn draw_mic_dot(rgba: &mut [u8], size: u32) {
+    const RED: [u8; 4] = [0xDC, 0x26, 0x26, 0xFF];
+    let d = dot_size(size);
+    let start = size - d;
+    for y in start - 1..size {
+        for x in start - 1..size {
+            let i = ((y * size + x) * 4) as usize;
+            let inner = x >= start && y >= start;
+            let corner = d >= 6 && (x == start || x == size - 1) && (y == start || y == size - 1);
+            let color = if inner && !corner { RED } else { [0; 4] };
+            rgba[i..i + 4].copy_from_slice(&color);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -360,15 +390,15 @@ mod tests {
     #[test]
     fn draws_at_each_tray_size_without_scaling() {
         for size in [16, 20, 24, 28, 32, 40] {
-            let img = draw(Mode::Deck, size, false);
+            let img = draw(Mode::Deck, size, false, false);
             assert_eq!((img.width(), img.height()), (size, size), "{size}");
         }
         // 16px: 칸 4px, 간격 2px, 여백 0 → (0,0)은 채움, (4,0)은 간격(투명)
-        let img = draw(Mode::Deck, 16, true);
+        let img = draw(Mode::Deck, 16, true, false);
         assert_eq!(pixel(&img, 0, 0), [0x25, 0x63, 0xEB, 0xFF]);
         assert_eq!(pixel(&img, 4, 0)[3], 0);
         // 24px: 귀퉁이 1px 비움
-        let img = draw(Mode::Deck, 24, false);
+        let img = draw(Mode::Deck, 24, false, false);
         assert_eq!(pixel(&img, 1, 1)[3], 0);
         assert_eq!(pixel(&img, 2, 1)[3], 0xFF);
     }
@@ -376,12 +406,28 @@ mod tests {
     #[test]
     fn numbers_mode_is_outline_and_paused_skips_middle_row() {
         // 32px 숫자 모드: 칸(2..10) 테두리 2px, 가운데는 비움
-        let img = draw(Mode::Numbers, 32, false);
+        let img = draw(Mode::Numbers, 32, false, false);
         assert_eq!(pixel(&img, 3, 5)[3], 0xFF);
         assert_eq!(pixel(&img, 5, 5)[3], 0);
         // 일시정지: 가운데 줄(y 13..21) 빔
-        let img = draw(Mode::Paused, 32, false);
+        let img = draw(Mode::Paused, 32, false, false);
         assert_eq!(pixel(&img, 5, 16)[3], 0);
         assert_eq!(pixel(&img, 5, 5)[3], 0xFF);
+    }
+
+    #[test]
+    fn muted_mic_adds_red_dot_bottom_right() {
+        const RED: [u8; 4] = [0xDC, 0x26, 0x26, 0xFF];
+        for size in [16, 20, 24, 32] {
+            let img = draw(Mode::Deck, size, false, true);
+            // 오른쪽 아래 모서리 = 빨간 점
+            assert_eq!(pixel(&img, size - 2, size - 2), RED, "{size}");
+            // 점 둘레 1px은 비워 칸과 떨어져 보이게
+            let d = dot_size(size);
+            assert_eq!(pixel(&img, size - d - 1, size - 2)[3], 0, "{size}");
+        }
+        // 음소거가 아니면 같은 자리는 칸 색 (16px: 마지막 칸 12..15)
+        let img = draw(Mode::Deck, 16, false, false);
+        assert_eq!(pixel(&img, 14, 14), [0x3B, 0x82, 0xF6, 0xFF]);
     }
 }

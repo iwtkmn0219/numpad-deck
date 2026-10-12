@@ -102,10 +102,25 @@ function LanguageMenu({ config, update }: { config: Config; update: (recipe: (dr
   const t = useT().editor.language;
   const value = config.language ?? "auto";
   const choose = (v: string) => chooseLanguage(v as LanguageChoice, update);
+  // 눌림 효과를 직접 그린다. 메뉴 버튼은 누르는 순간 메뉴가 열리고 닫히며 포커스가 오가서
+  // CSS :active가 들쭉날쭉했다 (닫은 뒤 다시 열 때 효과 없음).
+  const [pressed, setPressed] = useState(false);
+  const release = () => setPressed(false);
   return (
-    <DropdownMenu>
+    // modal을 끄면 메뉴가 열린 동안에도 버튼이 눌린다 (켜 두면 화면 전체가 눌리지 않아, 연달아
+    // 누를 때 두 번째 누름의 눌림 효과가 없었다)
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon-sm" title={t.label}>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          title={t.label}
+          className={pressed ? "translate-y-px" : undefined}
+          onPointerDown={(e) => e.button === 0 && setPressed(true)}
+          onPointerUp={release}
+          onPointerLeave={release}
+          onPointerCancel={release}
+        >
           <Globe />
         </Button>
       </DropdownMenuTrigger>

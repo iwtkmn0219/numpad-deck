@@ -97,7 +97,7 @@ export const en: Dict = {
       autostartDev: "Can't be changed in a development build (change it in the installed app).",
       micTitle: "Microphone",
       micIndicator: "Show on screen while the mic is muted",
-      micIndicatorHint: "See at a glance that you're muted, even in a meeting. The tray icon gets a red dot too.",
+      micIndicatorHint: "Shows at the top of the screen when every microphone is muted. The deck's \"Mute mic\" button mutes all connected microphones at once. The tray icon gets a red dot too.",
       micIndicatorNoButton: "Add a \"Mute mic\" button to use this.",
       updateTitle: "Updates",
       update: {

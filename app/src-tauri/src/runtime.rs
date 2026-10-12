@@ -40,6 +40,8 @@ struct State {
     recorder: Option<Recorder>,
     /// 마지막으로 안 마이크 상태(버튼으로 바꿨거나 감시 스레드가 읽음). 장치가 없으면 `None`.
     mic_muted: Option<bool>,
+    /// 녹음 장치 (꺼진 수, 전체 수). 일부만 꺼졌을 때 트레이 메뉴에 알린다.
+    mic_summary: Option<(usize, usize)>,
     /// `mic_muted`를 버튼이 바꿀 때마다 늘린다. 감시 스레드가 읽는 사이 바뀐 것을 알아챈다.
     mic_gen: u64,
     /// 마지막으로 배지에 보낸 순번
@@ -65,6 +67,11 @@ impl State {
             page: format!("{}/{} {name}", page + 1, self.config.pages.len()),
             config_error: self.config_error.clone(),
             mic_muted: self.mic_badge(),
+            mic_partial: if self.config.mic_indicator_active() {
+                deck_core::action::mic::partial_of(self.mic_summary)
+            } else {
+                None
+            },
         }
     }
 
@@ -219,6 +226,7 @@ impl Runtime {
             last_button: None,
             recorder: None,
             mic_muted: None,
+            mic_summary: None,
             mic_gen: 0,
             badge_seq: 0,
             update_available: None,
@@ -241,12 +249,15 @@ impl Runtime {
                         };
                         if first || active {
                             // 읽지 못하면 이번 차례는 건너뛴다 (직전 상태 유지)
-                            if let Ok(now) = deck_core::action::mic::all_muted() {
+                            if let Ok(summary) = deck_core::action::mic::mute_summary() {
+                                let now = deck_core::action::mic::all_muted_of(summary);
                                 let effects = {
                                     let mut s = state.lock().unwrap();
                                     // 읽는 사이 버튼이 바꿨으면 이 값은 오래된 것이다
-                                    (s.mic_gen == gen && s.mic_muted != now).then(|| {
+                                    let changed = s.mic_muted != now || s.mic_summary != summary;
+                                    (s.mic_gen == gen && changed).then(|| {
                                         s.mic_muted = now;
+                                        s.mic_summary = summary;
                                         Effects {
                                             tray: Some(s.view()),
                                             osd_refresh: Some(s.payload(None, None)),
@@ -651,6 +662,10 @@ fn exec_loop(events: Receiver<ExecEvent>, state: &Mutex<State>, ui: &Mutex<Ui>) 
             let effects = {
                 let mut s = state.lock().unwrap();
                 s.mic_muted = Some(muted);
+                // 버튼은 모든 장치를 같이 바꾼다
+                s.mic_summary = s
+                    .mic_summary
+                    .map(|(_, total)| (if muted { total } else { 0 }, total));
                 s.mic_gen += 1;
                 Effects {
                     tray: Some(s.view()),

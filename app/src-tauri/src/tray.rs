@@ -11,7 +11,7 @@
 //! 맞추는데, 전체 화면 앱에서 Win 키로 작업 표시줄을 불러오면 작업 표시줄이 메뉴보다 위에
 //! 그려져 아래 항목(종료)이 가려진다. 그래서 메뉴를 작업 영역 안(작업 표시줄 바깥)에 둔다.
 
-use deck_core::i18n::tr;
+use deck_core::i18n::{tr, Lang};
 use tauri::image::Image;
 use tauri::menu::{CheckMenuItem, ContextMenu, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
@@ -43,6 +43,19 @@ pub struct View {
     pub config_error: Option<String>,
     /// 마이크가 꺼져 있고 상시 표시가 켜져 있다 (아이콘 빨간 점, 메뉴 한 줄).
     pub mic_muted: bool,
+    /// 녹음 장치 중 일부만 꺼졌다 (꺼진 수, 전체 수). 배지·점 없이 메뉴 한 줄에만 알린다.
+    pub mic_partial: Option<(usize, usize)>,
+}
+
+/// 메뉴 상태 줄 끝에 붙는 마이크 상태.
+fn mic_suffix(lang: Lang, muted: bool, partial: Option<(usize, usize)>) -> String {
+    match (muted, partial, lang) {
+        (true, _, Lang::Ko) => " · 마이크 꺼짐".into(),
+        (true, _, Lang::En) => " · Mic muted".into(),
+        (false, Some((m, t)), Lang::Ko) => format!(" · 마이크 {m}/{t} 꺼짐"),
+        (false, Some((m, t)), Lang::En) => format!(" · Mic {m}/{t} muted"),
+        (false, None, _) => String::new(),
+    }
 }
 
 pub const MENU_EDITOR: &str = "editor";
@@ -216,10 +229,11 @@ impl Tray {
             .set_text(tr("Windows 시작 시 실행", "Start with Windows"));
         self.render_update();
         let _ = self.quit.set_text(tr("종료", "Quit"));
-        let mut status = format!("{mode} · {}", view.page);
-        if view.mic_muted {
-            status.push_str(&tr(" · 마이크 꺼짐", " · Mic muted"));
-        }
+        let status = format!(
+            "{mode} · {}{}",
+            view.page,
+            mic_suffix(deck_core::i18n::current(), view.mic_muted, view.mic_partial)
+        );
         *self.mode.lock().unwrap() = (view.mode, view.mic_muted);
         let _ = self.icon.set_icon(Some(icon(view.mode, view.mic_muted)));
         let _ = self
@@ -429,5 +443,20 @@ mod tests {
         // 음소거가 아니면 같은 자리는 칸 색 (16px: 마지막 칸 12..15)
         let img = draw(Mode::Deck, 16, false, false);
         assert_eq!(pixel(&img, 14, 14), [0x3B, 0x82, 0xF6, 0xFF]);
+    }
+
+    #[test]
+    fn status_line_shows_full_or_partial_mic_mute() {
+        assert_eq!(mic_suffix(Lang::Ko, true, None), " · 마이크 꺼짐");
+        assert_eq!(mic_suffix(Lang::En, true, None), " · Mic muted");
+        assert_eq!(
+            mic_suffix(Lang::Ko, false, Some((1, 4))),
+            " · 마이크 1/4 꺼짐"
+        );
+        assert_eq!(
+            mic_suffix(Lang::En, false, Some((1, 4))),
+            " · Mic 1/4 muted"
+        );
+        assert_eq!(mic_suffix(Lang::Ko, false, None), "");
     }
 }

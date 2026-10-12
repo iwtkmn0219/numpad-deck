@@ -8,6 +8,19 @@ const HISTORY_LIMIT = 50;
 /** 같은 입력란을 이만큼 안에 다시 고치면 되돌리기 기록 하나로 묶는다. */
 const COALESCE_MS = 1000;
 
+/**
+ * 내용 비교용 문자열. 키 순서를 정렬한다: 코어가 파일에 쓰는 순서(`version`·`language`·`pages`,
+ * 버튼은 넘패드 배치 순)와 화면이 객체에 넣은 순서가 달라도 같은 내용으로 본다. 그러지 않으면
+ * 저장한 내용이 파일 감시로 돌아올 때 밖에서 바뀐 것으로 여겨 되돌리기 기록이 하나 더 생긴다.
+ */
+function canonical(value: unknown): string {
+  return JSON.stringify(value, (_key, v: unknown) =>
+    v && typeof v === "object" && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v,
+  );
+}
+
 export type SaveStatus = { kind: "saved" } | { kind: "saving" } | { kind: "failed"; reason: string };
 
 /**
@@ -40,7 +53,7 @@ export function useEditorConfig() {
     window.clearTimeout(timer.current);
     setStatus({ kind: "saving" });
     timer.current = window.setTimeout(async () => {
-      const text = JSON.stringify(next);
+      const text = canonical(next);
       if (text === lastSaved.current) {
         setStatus({ kind: "saved" });
         return;
@@ -59,11 +72,11 @@ export function useEditorConfig() {
     let alive = true;
     getConfig().then((c) => {
       if (!alive) return;
-      lastSaved.current = JSON.stringify(c);
+      lastSaved.current = canonical(c);
       show(c);
     });
     const unlisten = onConfigChanged((c) => {
-      const text = JSON.stringify(c);
+      const text = canonical(c);
       if (text === lastSaved.current) return;
       lastSaved.current = text;
       if (current.current) past.current = [...past.current, current.current].slice(-HISTORY_LIMIT);

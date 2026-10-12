@@ -273,8 +273,11 @@ function useTabDrag(count: number, onMove: (from: number, to: number) => void) {
     if (i === state.from) return { transform: `translateX(${state.dx}px)` };
     const to = targetIndex(state);
     const r = state.rects[state.from];
-    const next = state.rects[state.from + 1] ?? state.rects[state.from - 1];
-    const step = next ? r.width + Math.abs(next.left - r.right) : r.width;
+    // 비켜서는 거리 = 끄는 탭 너비 + 탭 사이 간격. 간격은 옆 탭과 잰다 (맨 오른쪽 탭이면 왼쪽 탭과).
+    const after = state.rects[state.from + 1];
+    const before = state.rects[state.from - 1];
+    const gap = after ? after.left - r.right : before ? r.left - before.right : 0;
+    const step = r.width + gap;
     let shift = 0;
     if (state.from < i && i <= to) shift = -step;
     if (to <= i && i < state.from) shift = step;

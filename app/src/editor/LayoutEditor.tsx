@@ -202,7 +202,7 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
                     ? "border-key-edge text-muted-foreground hover:bg-white/50"
                     : p.key === "NumLock"
                       ? "border-dashed bg-muted/40 text-muted-foreground hover:bg-muted"
-                      : "bg-card hover:bg-muted",
+                      : "bg-card shadow-[inset_0_-2px_0_var(--key-edge)] hover:shadow-[inset_0_-2px_0_var(--key-edge),0_2px_6px_rgb(31_30_28/0.08)]",
                   // 선택은 본 화면처럼 바깥 파란 테두리 (칸이 작아 간격은 1px 좁게)
                   p.key === selected && "outline-2 outline-offset-2 outline-selection",
                   drag?.key === p.key ? "cursor-grabbing opacity-60" : "cursor-grab",

@@ -7,3 +7,6 @@ docs/*-checklist.md
 # 개인 작업 방식 (Claude Code)
 CLAUDE.local.md
 .claude/settings.local.json
+
+# 에이전트용 기획·마케팅 문서 (가설·테스터 의견이 들어가 로컬 전용)
+.agents/

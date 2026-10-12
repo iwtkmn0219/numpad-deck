@@ -23,6 +23,9 @@ import {
 import { pauseDeckForwarding } from "./api";
 import { numpadLabel } from "./keymap";
 
+/** 켜진 선택 버튼(역할·가로 2칸·세로 2줄): 파란 칩. 차콜로 채운 주 버튼은 "완료" 하나만. */
+const ON = "border-selection bg-selection-soft text-selection-foreground hover:bg-selection-soft";
+
 /** 시스템 키 (역할을 맞바꿀 수 있는 네 키) */
 const SYSTEM: string[] = ["/", "*", "-", "."];
 
@@ -247,7 +250,9 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
                         <Button
                           key={r}
                           size="sm"
-                          variant={systemRole(systemKey, config.systemKeys) === r ? "default" : "outline"}
+                          variant="outline"
+                          aria-pressed={systemRole(systemKey, config.systemKeys) === r}
+                          className={cn(systemRole(systemKey, config.systemKeys) === r && ON)}
                           onClick={() => assignRole(systemKey, r)}
                         >
                           {dict.system[r]}
@@ -259,14 +264,18 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
                 )}
                 <div className="flex flex-col gap-2">
                   <Button
-                    variant={current.w === 2 ? "default" : "outline"}
+                    variant="outline"
+                    aria-pressed={current.w === 2}
+                    className={cn(current.w === 2 && ON)}
                     size="sm"
                     onClick={() => resize(current.w === 2 ? 1 : 2, current.h)}
                   >
                     {t.wide}
                   </Button>
                   <Button
-                    variant={current.h === 2 ? "default" : "outline"}
+                    variant="outline"
+                    aria-pressed={current.h === 2}
+                    className={cn(current.h === 2 && ON)}
                     size="sm"
                     onClick={() => resize(current.w, current.h === 2 ? 1 : 2)}
                   >

@@ -1,2 +1,5 @@
 /target
 *.log
+
+# 수동 시험 결과(개인 기록)는 로컬에만 둔다
+docs/*-checklist.md

@@ -5,4 +5,4 @@ export type Action = { "type": "hotkey", keys: Array<string>, } | { "type": "lau
 /**
  * 0–1. 없으면 1.
  */
-volume?: number, } | { "type": "sequence", steps: Array<Action>, } | { "type": "delay", ms: number, };
+volume?: number, } | { "type": "stopSounds" } | { "type": "sequence", steps: Array<Action>, } | { "type": "delay", ms: number, };

@@ -124,7 +124,7 @@ function Cell({
       <span className={`text-[10px] leading-none ${lit ? "text-white/70" : "text-neutral-500"}`}>
         {slot.key}
       </span>
-      <span className="mt-auto line-clamp-2 text-[12.5px] leading-tight font-medium break-keep">
+      <span className="mt-auto line-clamp-2 w-full text-[12.5px] leading-tight font-medium break-keep [overflow-wrap:anywhere]">
         {label ?? ""}
       </span>
     </div>

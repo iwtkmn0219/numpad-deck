@@ -57,7 +57,7 @@ export function KeyGrid({ page, selected, onSelect }: Props) {
             style={{ gridArea: slot.area }}
             onClick={() => onSelect({ kind: "button", key: slot.key })}
             className={cn(
-              "flex flex-col items-start rounded-xl px-3 py-2 text-left transition-colors",
+              "flex min-w-0 flex-col items-start overflow-hidden rounded-xl px-3 py-2 text-left transition-colors",
               button
                 ? "border bg-card shadow-xs hover:border-foreground/30"
                 : "border border-dashed text-muted-foreground hover:border-foreground/30",
@@ -65,7 +65,7 @@ export function KeyGrid({ page, selected, onSelect }: Props) {
             )}
           >
             <span className="text-[11px] text-muted-foreground">{slot.key}</span>
-            <span className="mt-auto line-clamp-2 text-sm font-medium break-keep">
+            <span className="mt-auto line-clamp-2 w-full text-sm font-medium break-keep [overflow-wrap:anywhere]">
               {button ? button.label : t.editor.grid.empty}
             </span>
           </button>

@@ -96,6 +96,8 @@ pub enum Action {
         #[ts(optional)]
         volume: Option<f32>,
     },
+    /// 재생 중인 효과음을 모두 멈춘다.
+    StopSounds,
     Sequence {
         steps: Vec<Action>,
     },

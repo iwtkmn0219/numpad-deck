@@ -21,15 +21,21 @@ const POLL: Duration = Duration::from_millis(250);
 
 type Sound = Amplify<Decoder<BufReader<File>>>;
 
+enum Message {
+    Play(Sound),
+    /// 재생 중인 소리를 모두 멈춘다.
+    StopAll,
+}
+
 /// 재생 스레드 핸들. 복제해서 여러 스레드(묶음)에서 쓸 수 있다.
 #[derive(Clone)]
 pub struct Audio {
-    tx: Sender<Sound>,
+    tx: Sender<Message>,
 }
 
 impl Audio {
     pub fn start() -> Audio {
-        let (tx, rx) = mpsc::channel::<Sound>();
+        let (tx, rx) = mpsc::channel::<Message>();
         let _ = thread::Builder::new()
             .name("deck-audio".into())
             .spawn(move || {
@@ -38,7 +44,8 @@ impl Audio {
                 let mut idle_since = Instant::now();
                 loop {
                     match rx.recv_timeout(POLL) {
-                        Ok(sound) => {
+                        Ok(Message::StopAll) => players.clear(),
+                        Ok(Message::Play(sound)) => {
                             if sink.is_none() {
                                 match DeviceSinkBuilder::open_default_sink() {
                                     Ok(mut s) => {
@@ -77,7 +84,12 @@ impl Audio {
         let decoder = Decoder::try_from(f)
             .map_err(|e| format!("\"{path}\"은 재생할 수 없는 형식입니다: {e}"))?;
         self.tx
-            .send(decoder.amplify(volume))
+            .send(Message::Play(decoder.amplify(volume)))
             .map_err(|_| "소리 재생 스레드가 멈췄습니다.".to_string())
+    }
+
+    /// 재생 중인 효과음을 모두 멈춘다.
+    pub fn stop_all(&self) {
+        let _ = self.tx.send(Message::StopAll);
     }
 }

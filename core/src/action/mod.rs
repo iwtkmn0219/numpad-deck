@@ -118,6 +118,10 @@ fn run_one(action: &Action, audio: &Audio, events: &Sender<ExecEvent>) -> Result
             Ok(())
         }
         Action::Sound { file, volume } => audio.play(file, volume.unwrap_or(1.0)),
+        Action::StopSounds => {
+            audio.stop_all();
+            Ok(())
+        }
         Action::Delay { ms } => {
             thread::sleep(Duration::from_millis(*ms));
             Ok(())

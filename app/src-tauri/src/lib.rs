@@ -17,7 +17,7 @@ use tauri::{Manager, State};
 
 use osd::Osd;
 use runtime::Runtime;
-use tray::{Tray, MENU_EDITOR, MENU_OPEN_CONFIG, MENU_PAUSE, MENU_QUIT};
+use tray::{Tray, MENU_EDITOR, MENU_OPEN_CONFIG, MENU_PAUSE, MENU_QUIT, MENU_STOP_SOUNDS};
 
 #[tauri::command]
 fn get_config(runtime: State<'_, Arc<Runtime>>) -> Config {
@@ -110,6 +110,7 @@ pub fn run() {
             match event.id().as_ref() {
                 MENU_EDITOR => editor::open(app),
                 MENU_PAUSE => runtime.toggle_pause(),
+                MENU_STOP_SOUNDS => runtime.stop_sounds(),
                 MENU_OPEN_CONFIG => runtime.open_config(),
                 MENU_QUIT => app.exit(0),
                 _ => {}

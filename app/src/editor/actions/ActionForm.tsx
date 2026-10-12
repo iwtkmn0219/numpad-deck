@@ -36,6 +36,8 @@ export function ActionForm({ action, onChange }: FormProps) {
       return <MediaForm action={action} onChange={onChange} />;
     case "micMute":
       return <MicForm />;
+    case "stopSounds":
+      return <StopSoundsForm />;
     case "sound":
       return <SoundForm action={action} onChange={onChange} />;
     case "sequence":
@@ -50,6 +52,7 @@ type Of<K extends Action["type"]> = Extract<Action, { type: K }>;
 function HotkeyForm({ action, onChange }: FormProps<Of<"hotkey">>) {
   const f = useT().editor.forms.hotkey;
   const [recording, setRecording] = useState(false);
+  const [manual, setManual] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const stop = useRef<(() => void) | null>(null);
 
@@ -102,11 +105,112 @@ function HotkeyForm({ action, onChange }: FormProps<Of<"hotkey">>) {
           <X /> {f.cancel}
         </Button>
       ) : (
-        <Button variant="outline" size="sm" onClick={start}>
-          <Keyboard /> {action.keys.length ? f.rerecord : f.record}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={start}>
+            <Keyboard /> {action.keys.length ? f.rerecord : f.record}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setManual((m) => !m)}>
+            {manual ? f.manualDone : f.manual}
+          </Button>
+        </div>
       )}
       {message && <p className="text-xs text-destructive">{message}</p>}
+      {manual && !recording && <ManualHotkey keys={action.keys} onChange={(keys) => onChange({ type: "hotkey", keys })} />}
+    </div>
+  );
+}
+
+const MODIFIERS = ["Ctrl", "Shift", "Alt", "Win"] as const;
+
+/** 보조 키 이름으로 볼 이름들 (`core/src/keys.rs`의 별칭 포함) */
+const MODIFIER_ALIASES: Record<string, (typeof MODIFIERS)[number]> = {
+  ctrl: "Ctrl",
+  control: "Ctrl",
+  lctrl: "Ctrl",
+  rctrl: "Ctrl",
+  shift: "Shift",
+  lshift: "Shift",
+  rshift: "Shift",
+  alt: "Alt",
+  lalt: "Alt",
+  ralt: "Alt",
+  win: "Win",
+  windows: "Win",
+  lwin: "Win",
+  rwin: "Win",
+};
+
+/** 직접 고를 수 있는 키. 이름은 `core/src/keys.rs`가 읽는 대표 이름이어야 한다. */
+const KEY_GROUPS: [string, string[]][] = [
+  ["A–Z", Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i))],
+  ["0–9", Array.from({ length: 10 }, (_, i) => String(i))],
+  ["F1–F24", Array.from({ length: 24 }, (_, i) => `F${i + 1}`)],
+  [
+    "",
+    [
+      "Esc", "Tab", "Enter", "Space", "Backspace", "Delete", "Insert", "Home", "End", "PageUp", "PageDown",
+      "Left", "Up", "Right", "Down", "PrintScreen", "Pause", "CapsLock", "ScrollLock", "Menu", "HanEng", "Hanja",
+    ],
+  ],
+  ["", [";", "=", ",", "-", ".", "/", "`", "[", "\\", "]", "'"]],
+];
+
+/** 녹화가 안 되는 조합(Win+D 등)을 위한 직접 고르기 */
+function ManualHotkey({ keys, onChange }: { keys: string[]; onChange: (keys: string[]) => void }) {
+  const f = useT().editor.forms.hotkey;
+  const mods = new Set(keys.map((k) => MODIFIER_ALIASES[k.toLowerCase()]).filter(Boolean));
+  const main = keys.find((k) => !MODIFIER_ALIASES[k.toLowerCase()]) ?? "";
+
+  const emit = (nextMods: Set<string>, nextMain: string) => {
+    const ordered = MODIFIERS.filter((m) => nextMods.has(m));
+    onChange(nextMain ? [...ordered, nextMain] : ordered);
+  };
+
+  return (
+    <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+      <p className="text-xs text-muted-foreground">{f.manualHint}</p>
+      <div className="space-y-1.5">
+        <Label>{f.modifiers}</Label>
+        <div className="flex gap-1.5">
+          {MODIFIERS.map((m) => (
+            <button
+              key={m}
+              onClick={() => {
+                const next = new Set(mods);
+                if (next.has(m)) next.delete(m);
+                else next.add(m);
+                emit(next, main);
+              }}
+              className={cn(
+                "rounded-md border px-3 py-1 text-sm",
+                mods.has(m) ? "border-blue-500 bg-blue-500/10 text-blue-700" : "bg-background hover:bg-muted",
+              )}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="manual-key">{f.mainKey}</Label>
+        <select
+          id="manual-key"
+          value={main}
+          onChange={(e) => emit(mods, e.currentTarget.value)}
+          className="h-8 w-full rounded-lg border bg-background px-2 text-sm"
+        >
+          <option value="">{f.noKey}</option>
+          {KEY_GROUPS.map(([group, names], i) => (
+            <optgroup key={i} label={group || "—"}>
+              {names.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </div>
     </div>
   );
 }
@@ -268,6 +372,11 @@ function MediaForm({ action, onChange }: FormProps<Of<"media">>) {
       </div>
     </div>
   );
+}
+
+function StopSoundsForm() {
+  const f = useT().editor.forms.stopSounds;
+  return <p className="text-sm text-muted-foreground">{f.body}</p>;
 }
 
 function MicForm() {

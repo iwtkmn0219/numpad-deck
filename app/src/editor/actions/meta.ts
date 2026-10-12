@@ -8,6 +8,7 @@ import {
   Music,
   SquareMousePointer,
   Type,
+  VolumeX,
   type LucideIcon,
 } from "lucide-react";
 import type { Action } from "@/bindings/Action";
@@ -16,7 +17,17 @@ import type { Dict } from "@/i18n";
 export type Kind = Action["type"];
 
 /** 카드에 보이는 순서 */
-export const KINDS: Kind[] = ["hotkey", "launch", "open", "text", "media", "micMute", "sound", "sequence"];
+export const KINDS: Kind[] = [
+  "hotkey",
+  "launch",
+  "open",
+  "text",
+  "media",
+  "micMute",
+  "sound",
+  "stopSounds",
+  "sequence",
+];
 
 export const KIND_ICONS: Record<Kind, LucideIcon> = {
   hotkey: Keyboard,
@@ -26,6 +37,7 @@ export const KIND_ICONS: Record<Kind, LucideIcon> = {
   media: Music,
   micMute: MicOff,
   sound: AudioLines,
+  stopSounds: VolumeX,
   sequence: ListOrdered,
   delay: Clock,
 };
@@ -47,6 +59,8 @@ export function emptyAction(kind: Kind): Action {
       return { type: "micMute" };
     case "sound":
       return { type: "sound", file: "" };
+    case "stopSounds":
+      return { type: "stopSounds" };
     case "sequence":
       return { type: "sequence", steps: [] };
     case "delay":
@@ -80,6 +94,7 @@ export function incompleteReason(action: Action, t: Dict, inSequence = false): s
       return action.steps.some((s) => incompleteReason(s, t, true) !== null) ? f.sequence.incomplete : null;
     case "media":
     case "micMute":
+    case "stopSounds":
       return null;
   }
 }
@@ -101,6 +116,8 @@ export function suggestLabel(action: Action, t: Dict, appName?: string): string 
       return t.editor.kinds.micMute.title;
     case "sound":
       return fileStem(action.file) || t.editor.kinds.sound.title;
+    case "stopSounds":
+      return t.editor.kinds.stopSounds.title;
     case "sequence":
       return t.editor.kinds.sequence.title;
     case "delay":

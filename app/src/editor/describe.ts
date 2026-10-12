@@ -19,6 +19,8 @@ export function describeAction(action: Action, t: Dict): string {
       return a.micMute;
     case "sound":
       return a.sound(fileName(action.file));
+    case "stopSounds":
+      return a.stopSounds;
     case "sequence":
       return a.sequence(action.steps.length);
     case "delay":

@@ -324,6 +324,11 @@ impl Runtime {
         apply(&self.ui, effects);
     }
 
+    /// 재생 중인 효과음을 모두 멈춘다 (트레이 메뉴).
+    pub fn stop_sounds(&self) {
+        self.executor.submit("효과음 멈추기", Action::StopSounds);
+    }
+
     pub fn open_config(&self) {
         self.executor.submit(
             "설정 파일 열기",

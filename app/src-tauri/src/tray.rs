@@ -43,6 +43,7 @@ pub struct View {
 
 pub const MENU_EDITOR: &str = "editor";
 pub const MENU_PAUSE: &str = "pause";
+pub const MENU_STOP_SOUNDS: &str = "stop-sounds";
 pub const MENU_OPEN_CONFIG: &str = "open-config";
 pub const MENU_QUIT: &str = "quit";
 
@@ -60,6 +61,8 @@ impl Tray {
         let error = MenuItem::with_id(app, "error", "", false, None::<&str>)?;
         let editor = MenuItem::with_id(app, MENU_EDITOR, "설정 열기", true, None::<&str>)?;
         let pause = CheckMenuItem::with_id(app, MENU_PAUSE, "일시정지", true, false, None::<&str>)?;
+        let stop_sounds =
+            MenuItem::with_id(app, MENU_STOP_SOUNDS, "효과음 멈추기", true, None::<&str>)?;
         let open = MenuItem::with_id(app, MENU_OPEN_CONFIG, "설정 파일 열기", true, None::<&str>)?;
         let quit = MenuItem::with_id(app, MENU_QUIT, "종료", true, None::<&str>)?;
         let menu = Menu::with_items(
@@ -70,6 +73,7 @@ impl Tray {
                 &PredefinedMenuItem::separator(app)?,
                 &editor,
                 &pause,
+                &stop_sounds,
                 &open,
                 &PredefinedMenuItem::separator(app)?,
                 &quit,

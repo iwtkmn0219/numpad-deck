@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Play, Replace, Trash2, TriangleAlert } from "lucide-react";
+import { Play, Replace, Square, Trash2, TriangleAlert } from "lucide-react";
 import type { Action } from "@/bindings/Action";
 import type { Button as DeckButton } from "@/bindings/Button";
 import type { ButtonKeyName } from "@/bindings/ButtonKeyName";
@@ -66,7 +66,7 @@ function ButtonEditor({ stored, page, buttonKey, update }: EditorProps) {
   const [draft, setDraft] = useState<DeckButton | null>(stored);
   const [picking, setPicking] = useState(stored === null);
   /** 사용자가 이름을 직접 고쳤는지. 안 고쳤으면 동작에 맞춰 이름을 지어 준다. */
-  const labelTouched = useRef(stored !== null);
+  const labelTouched = useRef(stored !== null && stored.label !== suggestLabel(stored.action, t));
   /** 마지막으로 저장한 버튼. 되돌리기 등으로 저장된 값이 바뀌면 화면을 맞춘다. */
   const committed = useRef(JSON.stringify(stored));
 
@@ -76,7 +76,7 @@ function ButtonEditor({ stored, page, buttonKey, update }: EditorProps) {
     committed.current = json;
     setDraft(stored);
     setPicking(stored === null);
-    labelTouched.current = stored !== null;
+    labelTouched.current = stored !== null && stored.label !== suggestLabel(stored.action, t);
   }, [stored]);
 
   const commit = (next: DeckButton | null, coalesce?: string) => {
@@ -91,7 +91,9 @@ function ButtonEditor({ stored, page, buttonKey, update }: EditorProps) {
   };
 
   const setAction = (action: Action, hint?: { appName?: string }) => {
-    const label = !labelTouched.current || !draft ? suggestLabel(action, t, hint?.appName) : draft.label;
+    // 이름을 직접 고친 적이 없거나, 지금 이름이 이전 동작에서 지어 준 이름 그대로면 새로 짓는다
+    const auto = !draft || !labelTouched.current || draft.label === suggestLabel(draft.action, t);
+    const label = auto ? suggestLabel(action, t, hint?.appName) : draft.label;
     commit({ ...(draft ?? {}), label, action }, `action:${page}:${buttonKey}`);
   };
 
@@ -162,6 +164,15 @@ function ButtonEditor({ stored, page, buttonKey, update }: EditorProps) {
               >
                 <Play /> {p.test}
               </Button>
+              {playsSound(draft.action) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void testAction(p.stopTest, { type: "stopSounds" })}
+                >
+                  <Square /> {p.stopTest}
+                </Button>
+              )}
               <Button variant="outline" size="sm" className="ml-auto text-destructive" onClick={() => {
                 commit(null);
                 setPicking(true);
@@ -175,4 +186,10 @@ function ButtonEditor({ stored, page, buttonKey, update }: EditorProps) {
       )}
     </div>
   );
+}
+
+/** 효과음을 내는 동작인지 (시험 실행 옆에 "소리 멈추기"를 보여줄지) */
+function playsSound(action: Action): boolean {
+  if (action.type === "sound") return true;
+  return action.type === "sequence" && action.steps.some(playsSound);
 }

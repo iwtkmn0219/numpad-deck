@@ -47,7 +47,7 @@ export function Editor() {
         <div className="w-[480px] shrink-0">
           <KeyGrid page={current} selected={selected} onSelect={setSelected} />
         </div>
-        <aside className="min-w-0 flex-1 rounded-xl border bg-card p-5">
+        <aside className="min-h-0 min-w-0 flex-1 overflow-y-auto rounded-xl border bg-card p-5">
           <ButtonPanel config={config} page={page} selected={selected} update={update} />
         </aside>
       </main>

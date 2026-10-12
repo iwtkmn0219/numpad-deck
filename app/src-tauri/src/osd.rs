@@ -70,6 +70,8 @@ pub enum Show {
     For(Duration),
     /// `-` 키: 고정해서 띄우거나 숨긴다.
     Toggle,
+    /// 고정을 풀고 이 시간 동안만 보인 뒤 숨긴다 (NumLock을 켜 덱 모드를 끝낼 때).
+    Unpin(Duration),
 }
 
 pub struct Osd {
@@ -140,6 +142,10 @@ impl Osd {
             }
             Show::For(_) if self.pinned.load(Ordering::Relaxed) => None,
             Show::For(d) => Some(d),
+            Show::Unpin(d) => {
+                self.pinned.store(false, Ordering::Relaxed);
+                Some(d)
+            }
         };
         payload.seq = self.seq.fetch_add(1, Ordering::Relaxed) + 1;
         let _ = self.app.emit_to(LABEL, EVENT, payload);

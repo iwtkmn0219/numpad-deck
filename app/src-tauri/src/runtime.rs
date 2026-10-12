@@ -366,9 +366,15 @@ impl Runtime {
             let mut s = self.state.lock().unwrap();
             s.paused = !s.paused;
             self.hook.set_paused(s.paused);
+            // 일시정지하면 `-` 키가 먹지 않으므로 고정해 둔 OSD도 잠깐 보인 뒤 닫는다.
+            let how = if s.paused {
+                Show::Unpin(osd::MODE)
+            } else {
+                Show::For(osd::MODE)
+            };
             Effects {
                 tray: Some(s.view()),
-                osd: Some((s.payload(None, None), Show::For(osd::MODE))),
+                osd: Some((s.payload(None, None), how)),
                 ..Effects::default()
             }
         };
@@ -528,9 +534,15 @@ fn on_hook_event(s: &mut State, event: HookEvent, executor: &Executor) -> Effect
             let previous = s.numlock_on.replace(on);
             // 시작할 때 받는 첫 알림에는 OSD를 띄우지 않는다.
             let changed = previous.is_some_and(|p| p != on);
+            // NumLock을 켜 덱 모드를 끝내면 `-`로 고정해 둔 OSD도 잠깐 "숫자 모드"를 보인 뒤 닫는다.
+            let how = if on {
+                Show::Unpin(osd::MODE)
+            } else {
+                Show::For(osd::MODE)
+            };
             Effects {
                 tray: Some(s.view()),
-                osd: (changed && !s.paused).then(|| (s.payload(None, None), Show::For(osd::MODE))),
+                osd: (changed && !s.paused).then(|| (s.payload(None, None), how)),
                 ..Effects::default()
             }
         }

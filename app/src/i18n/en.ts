@@ -86,6 +86,10 @@ export const en: Dict = {
     settings: {
       button: "Settings",
       title: "Settings",
+      startTitle: "Startup",
+      autostart: "Start with Windows",
+      autostartHint: "When on, Numpad Deck starts in the tray when you sign in to Windows.",
+      autostartDev: "Can't be changed in a development build (change it in the installed app).",
       configTitle: "Config file",
       configBody: "All buttons, pages and the layout are saved in this one file. Copy the folder to back it up.",
       openFile: "Open file",

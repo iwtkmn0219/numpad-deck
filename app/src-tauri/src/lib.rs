@@ -15,10 +15,13 @@ use deck_core::config::{Action, Config};
 use deck_core::key::{NumpadKey, RawKey};
 use deck_core::presets::{self, Lang, Preset};
 use tauri::{AppHandle, Manager, State};
+use tauri_plugin_autostart::ManagerExt;
 
 use osd::Osd;
 use runtime::Runtime;
-use tray::{Tray, MENU_EDITOR, MENU_OPEN_CONFIG, MENU_PAUSE, MENU_QUIT, MENU_STOP_SOUNDS};
+use tray::{
+    Tray, MENU_AUTOSTART, MENU_EDITOR, MENU_OPEN_CONFIG, MENU_PAUSE, MENU_QUIT, MENU_STOP_SOUNDS,
+};
 
 #[tauri::command]
 fn get_config(runtime: State<'_, Arc<Runtime>>) -> Config {
@@ -137,6 +140,92 @@ fn finish_onboarding(runtime: State<'_, Arc<Runtime>>) {
     runtime.finish_onboarding();
 }
 
+/// Windows 시작 시 실행 (`HKCU\...\Run`)이 켜져 있는가. 읽지 못하면 꺼진 것으로 본다.
+fn autostart_enabled(app: &AppHandle) -> bool {
+    app.autolaunch().is_enabled().unwrap_or(false)
+}
+
+/// 사용자가 Windows 시작 시 실행을 직접 껐다는 표시 파일 (설정 폴더). 이 PC에만 해당하는
+/// 선택이라 공유·백업되는 설정 파일이 아니라 따로 둔다.
+fn autostart_off_marker(runtime: &Runtime) -> Option<std::path::PathBuf> {
+    runtime
+        .config_path()
+        .parent()
+        .map(|dir| dir.join("autostart-off"))
+}
+
+/// 기본은 켜짐: 사용자가 직접 끈 적이 없으면 켠다 (릴리스 빌드만 — 개발용 실행 파일이
+/// 로그인 때 뜨면 안 된다).
+///
+/// 켜져 있어도 다시 등록한다: 등록된 경로가 다른 실행 파일(옮긴 설치, 개발용 실행 파일)이면
+/// 지금 실행 파일로 고쳐진다.
+fn apply_default_autostart(app: &AppHandle, runtime: &Runtime) {
+    if !AUTOSTART_AVAILABLE || autostart_off_marker(runtime).is_some_and(|m| m.exists()) {
+        return;
+    }
+    if let Err(e) = app.autolaunch().enable() {
+        eprintln!("Windows 시작 시 실행을 켤 수 없습니다: {e}");
+    }
+}
+
+/// 개발 빌드는 Windows 시작 시 실행을 바꾸지 않는다. 개발용 실행 파일(콘솔 창이 뜨고 화면은
+/// 개발 서버가 있어야 보임)이 로그인 때 뜨게 되기 때문이다 (실제로 겪음).
+const AUTOSTART_AVAILABLE: bool = !cfg!(debug_assertions);
+
+/// 로그인 때 자동 실행으로 켜졌다는 표시 (`Run` 값에 붙는 인자)
+const AUTOSTART_ARG: &str = "--autostart";
+
+/// 설정 창에 보내는 상태. 프런트엔드 `SettingsDialog.tsx`의 `Autostart`와 모양이 같아야 한다.
+#[derive(serde::Serialize)]
+struct AutostartState {
+    enabled: bool,
+    /// 개발 빌드면 false (바꿀 수 없음)
+    available: bool,
+}
+
+/// Windows 시작 시 실행을 켜거나 끈다 (설정 창, 트레이 메뉴). 끄면 다음 실행 때 다시 켜지
+/// 않도록 표시를 남긴다. 실제 상태를 돌려준다.
+fn set_autostart_state(app: &AppHandle, runtime: &Runtime, on: bool) -> bool {
+    if !AUTOSTART_AVAILABLE {
+        return autostart_enabled(app);
+    }
+    let manager = app.autolaunch();
+    let result = if on {
+        manager.enable()
+    } else {
+        manager.disable()
+    };
+    if let Err(e) = result {
+        eprintln!("Windows 시작 시 실행을 바꿀 수 없습니다: {e}");
+    }
+    if let Some(marker) = autostart_off_marker(runtime) {
+        let _ = if on {
+            std::fs::remove_file(&marker)
+        } else {
+            std::fs::write(&marker, b"")
+        };
+    }
+    let now = autostart_enabled(app);
+    runtime.set_autostart_checked(now);
+    now
+}
+
+#[tauri::command]
+fn get_autostart(app: AppHandle) -> AutostartState {
+    AutostartState {
+        enabled: autostart_enabled(&app),
+        available: AUTOSTART_AVAILABLE,
+    }
+}
+
+#[tauri::command]
+fn set_autostart(app: AppHandle, runtime: State<'_, Arc<Runtime>>, on: bool) -> AutostartState {
+    AutostartState {
+        enabled: set_autostart_state(&app, &runtime, on),
+        available: AUTOSTART_AVAILABLE,
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -146,6 +235,12 @@ pub fn run() {
             editor::open(app);
         }))
         .plugin(tauri_plugin_dialog::init())
+        // 로그인 때 자동 실행이면 이 인자가 붙는다 (그때만 창 없이 트레이에서 시작)
+        .plugin(
+            tauri_plugin_autostart::Builder::new()
+                .args([AUTOSTART_ARG])
+                .build(),
+        )
         .invoke_handler(tauri::generate_handler![
             get_config,
             save_config,
@@ -161,13 +256,21 @@ pub fn run() {
             app_info,
             open_config,
             open_config_folder,
+            get_autostart,
+            set_autostart,
             system_lang,
             onboarding_pending,
             finish_onboarding
         ])
         .setup(|app| {
             let runtime = Arc::new(Runtime::start()?);
-            let tray = Tray::create(app.handle(), &runtime.view())?;
+            apply_default_autostart(app.handle(), &runtime);
+            let tray = Tray::create(
+                app.handle(),
+                &runtime.view(),
+                autostart_enabled(app.handle()),
+                AUTOSTART_AVAILABLE,
+            )?;
             // OSD를 못 만들어도 덱은 동작해야 한다.
             let osd = Osd::create(app.handle())
                 .map_err(|e| eprintln!("OSD 창을 만들 수 없습니다: {e}"))
@@ -177,7 +280,10 @@ pub fn run() {
             // 첫 실행: 편집기를 열어 온보딩을 보여준다.
             let first_run = runtime.onboarding_pending();
             app.manage(runtime);
-            if first_run {
+            // 첫 실행(온보딩)이거나 사용자가 직접 실행했으면 편집기를 연다. 로그인 때 자동
+            // 실행이면 조용히 트레이에만 둔다. 직접 실행했는데 창이 안 뜨면 켜졌는지 알 수 없다.
+            let autostarted = std::env::args().any(|a| a == AUTOSTART_ARG);
+            if first_run || !autostarted {
                 editor::open(app.handle());
             }
             Ok(())
@@ -189,6 +295,9 @@ pub fn run() {
                 MENU_PAUSE => runtime.toggle_pause(),
                 MENU_STOP_SOUNDS => runtime.stop_sounds(),
                 MENU_OPEN_CONFIG => runtime.open_config(),
+                MENU_AUTOSTART => {
+                    set_autostart_state(app, &runtime, !autostart_enabled(app));
+                }
                 MENU_QUIT => app.exit(0),
                 _ => {}
             }

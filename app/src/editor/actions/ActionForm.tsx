@@ -84,11 +84,11 @@ function HotkeyForm({ action, onChange }: FormProps<Of<"hotkey">>) {
       <div
         className={cn(
           "flex min-h-11 flex-wrap items-center gap-1.5 rounded-lg border px-3 py-2",
-          recording && "border-blue-500 ring-2 ring-blue-500/30",
+          recording && "border-selection ring-2 ring-selection/30",
         )}
       >
         {recording ? (
-          <span className="text-sm text-blue-600">{f.recording}</span>
+          <span className="text-sm text-selection">{f.recording}</span>
         ) : action.keys.length ? (
           action.keys.map((k, i) => (
             <span key={i} className="flex items-center gap-1.5">
@@ -183,7 +183,7 @@ function ManualHotkey({ keys, onChange }: { keys: string[]; onChange: (keys: str
               }}
               className={cn(
                 "rounded-md border px-3 py-1 text-sm",
-                mods.has(m) ? "border-blue-500 bg-blue-500/10 text-blue-700" : "bg-background hover:bg-muted",
+                mods.has(m) ? "border-selection bg-selection-soft text-selection-foreground" : "bg-card hover:bg-muted",
               )}
             >
               {m}
@@ -197,7 +197,7 @@ function ManualHotkey({ keys, onChange }: { keys: string[]; onChange: (keys: str
           id="manual-key"
           value={main}
           onChange={(e) => emit(mods, e.currentTarget.value)}
-          className="h-8 w-full rounded-lg border bg-background px-2 text-sm"
+          className="h-8 w-full rounded-lg border border-input bg-card px-2 text-sm"
         >
           <option value="">{f.noKey}</option>
           {KEY_GROUPS.map(([group, names], i) => (
@@ -362,11 +362,11 @@ function MediaForm({ action, onChange }: FormProps<Of<"media">>) {
             onClick={() => onChange({ type: "media", command })}
             className={cn(
               "flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm",
-              action.command === command ? "border-blue-500 bg-blue-500/5" : "hover:bg-muted/40",
+              action.command === command ? "border-selection bg-selection-soft" : "hover:bg-muted/40",
             )}
           >
             {t.action.media[command]}
-            {action.command === command && <Check className="size-4 text-blue-600" />}
+            {action.command === command && <Check className="size-4 text-selection" />}
           </button>
         ))}
       </div>

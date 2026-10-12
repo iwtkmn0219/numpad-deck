@@ -88,7 +88,7 @@ export function IconPickerDialog({ open, onOpenChange, current, onPick }: Props)
                 onClick={() => onPick(name)}
                 className={cn(
                   "flex aspect-square items-center justify-center rounded-lg border hover:bg-muted",
-                  name === current ? "border-blue-500 bg-blue-500/10 text-blue-700" : "border-transparent",
+                  name === current ? "border-selection bg-selection-soft text-selection-foreground" : "border-transparent",
                 )}
               >
                 <Icon name={name} className="size-5" />

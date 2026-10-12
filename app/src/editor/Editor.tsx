@@ -12,11 +12,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useT } from "@/i18n";
+import { cn } from "@/lib/utils";
 import { installDeckKeyForwarding } from "./api";
 import { ButtonPanel } from "./ButtonPanel";
 import { gridFor } from "@/shared/layout";
 import { KeyGrid, type Selection } from "./KeyGrid";
 import { LayoutEditor } from "./LayoutEditor";
+import { useMode } from "./useMode";
 import { SettingsDialog, UpdateBanner } from "./SettingsDialog";
 import { Onboarding } from "./Onboarding";
 import { chooseLanguage, type LanguageChoice } from "./language";
@@ -53,7 +55,10 @@ export function Editor() {
   return (
     <div className="flex h-screen flex-col">
       <header className="flex items-center justify-between px-5 pt-4">
-        <h1 className="text-lg font-semibold">{t.windowTitle}</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-lg font-semibold">{t.windowTitle}</h1>
+          <ModeBadge />
+        </div>
         <div className="flex items-center gap-1">
           <StatusText status={status} />
           <Button variant="ghost" size="icon-sm" onClick={undo} disabled={!canUndo} title={`${t.undo} (Ctrl+Z)`}>
@@ -102,6 +107,33 @@ export function Editor() {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * 지금 모드 (덱 / 숫자 / 일시정지). "현재 모드가 항상 보임" — 편집기 안에서도.
+ * 색만으로 알리지 않게 점 모양도 다르다: 덱은 채운 점, 숫자는 속 빈 점, 일시정지는 주황 점.
+ */
+function ModeBadge() {
+  const t = useT().osd;
+  const mode = useMode();
+  if (!mode) return null;
+  const look = {
+    deck: { face: "bg-selection-soft text-selection-foreground", dot: "bg-selection" },
+    numbers: { face: "bg-muted text-muted-foreground", dot: "border-[1.5px] border-muted-foreground" },
+    paused: { face: "bg-amber-50 text-amber-800", dot: "bg-amber-500" },
+  }[mode];
+  const numlock = mode === "paused" ? null : mode === "deck" ? t.numlockOff : t.numlockOn;
+  return (
+    <span className={cn("inline-flex h-[22px] items-center gap-1.5 rounded-full px-2.5 text-xs font-medium", look.face)}>
+      <span className={cn("size-[7px] rounded-full", look.dot)} />
+      {t.mode[mode]}
+      {numlock && (
+        <span className="opacity-70">
+          · {t.numlockLabel} {numlock}
+        </span>
+      )}
+    </span>
   );
 }
 

@@ -125,7 +125,7 @@ function Cell({
   const label = button?.label;
   // 마이크 음소거 버튼은 지금 상태를 보인다: 켜져 있으면 초록 불, 꺼져 있으면 마이크 꺼짐 아이콘
   const mic = button?.action.type === "micMute" ? payload.micMuted : null;
-  // (실험: 모든 버튼을 흰 테두리로 강조) 마이크 버튼은 누를 때 바뀐 상태 색(켜짐 초록, 꺼짐 빨강)을 테두리와 함께 바로 보인다
+  // 누른 버튼은 흰 테두리로 강조한다. 마이크 버튼은 누를 때 바뀐 상태 색(켜짐 초록, 꺼짐 빨강)을 테두리와 함께 바로 보인다
   const tone = failed
     ? "bg-red-500 text-white"
     : lit && mic !== null

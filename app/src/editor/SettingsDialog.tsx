@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { FileJson, FolderOpen } from "lucide-react";
+import { listen } from "@tauri-apps/api/event";
+import { Download, FileJson, FolderOpen, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useT } from "@/i18n";
@@ -18,6 +19,16 @@ interface Autostart {
   available: boolean;
 }
 
+/** `update.rs`의 `State`·`Status`와 모양이 같아야 한다. */
+type UpdateStatus =
+  | { kind: "idle" | "checking" | "latest" | "installing" | "unavailable" }
+  | { kind: "available"; version: string }
+  | { kind: "failed"; error: string };
+interface UpdateState {
+  current: string;
+  status: UpdateStatus;
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -28,11 +39,18 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
   const t = useT().editor.settings;
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [autostart, setAutostart] = useState<Autostart | null>(null);
+  const [update, setUpdate] = useState<UpdateState | null>(null);
+
+  useEffect(() => {
+    const unlisten = listen<UpdateState>("update://changed", (e) => setUpdate(e.payload));
+    return () => void unlisten.then((f) => f());
+  }, []);
 
   useEffect(() => {
     if (!open) return;
     void invoke<AppInfo>("app_info").then(setInfo);
     void invoke<Autostart>("get_autostart").then(setAutostart);
+    void invoke<UpdateState>("get_update").then(setUpdate);
   }, [open]);
 
   return (
@@ -60,6 +78,39 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
             </span>
           </label>
         </section>
+
+        {update && (
+          <section className="space-y-2 border-t pt-4">
+            <h3 className="font-medium">{t.updateTitle}</h3>
+            <p className="text-muted-foreground">
+              {(() => {
+                const s = update.status;
+                switch (s.kind) {
+                  case "available":
+                    return t.update.available(s.version);
+                  case "failed":
+                    return t.update.failed;
+                  default:
+                    return t.update[s.kind];
+                }
+              })()}
+            </p>
+            {update.status.kind === "available" ? (
+              <Button size="sm" onClick={() => void invoke<UpdateState>("install_update").then(setUpdate)}>
+                <Download /> {t.update.install(update.status.version)}
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={["checking", "installing", "unavailable"].includes(update.status.kind)}
+                onClick={() => void invoke<UpdateState>("check_update").then(setUpdate)}
+              >
+                <RefreshCw /> {t.update.check}
+              </Button>
+            )}
+          </section>
+        )}
 
         <section className="space-y-2 border-t pt-4">
           <h3 className="font-medium">{t.configTitle}</h3>

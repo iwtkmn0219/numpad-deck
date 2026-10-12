@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ChevronDown, Plus } from "lucide-react";
 import type { Config } from "@/bindings/Config";
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,7 @@ export function PageTabs({ config, page, onSelect, update }: Props) {
   /** 메뉴가 열린 탭 (▾ 또는 오른쪽 클릭) */
   const [menuFor, setMenuFor] = useState<number | null>(null);
   const pages = config.pages;
+  const drag = useTabDrag(pages.length, (from, to) => move(from, to));
 
   const addPage = () => {
     update((c) => {
@@ -81,9 +82,17 @@ export function PageTabs({ config, page, onSelect, update }: Props) {
       {pages.map((p, i) => (
         <div
           key={i}
+          ref={(el) => void (drag.tabs.current[i] = el)}
+          onPointerDown={(e) => renaming !== i && drag.onPointerDown(e, i)}
+          onPointerMove={drag.onPointerMove}
+          onPointerUp={drag.onPointerUp}
+          onPointerCancel={drag.onPointerUp}
+          onClickCapture={drag.onClickCapture}
+          style={drag.style(i)}
           className={cn(
-            "group flex shrink-0 items-center rounded-t-lg border border-b-0 text-sm",
+            "group relative flex shrink-0 items-center rounded-t-lg border border-b-0 text-sm",
             i === page ? "bg-background font-semibold" : "bg-muted/60 text-muted-foreground hover:bg-muted",
+            drag.active === i && "z-10 shadow-md",
           )}
         >
           {renaming === i ? (
@@ -121,6 +130,7 @@ export function PageTabs({ config, page, onSelect, update }: Props) {
           <DropdownMenu open={menuFor === i} onOpenChange={(open) => setMenuFor(open ? i : null)}>
             <DropdownMenuTrigger asChild>
               <button
+                data-no-drag
                 className="mr-1 rounded p-0.5 text-muted-foreground opacity-60 group-hover:opacity-100 hover:bg-muted"
                 aria-label={p.name}
               >
@@ -179,4 +189,112 @@ export function PageTabs({ config, page, onSelect, update }: Props) {
       </AlertDialog>
     </div>
   );
+}
+
+/** 끌기로 보는 거리(px). 이보다 적게 움직이면 그냥 클릭이다. */
+const DRAG_THRESHOLD = 5;
+
+interface DragState {
+  from: number;
+  pointerId: number;
+  startX: number;
+  dx: number;
+  started: boolean;
+  /** 끌기 시작할 때 잰 탭 위치 */
+  rects: DOMRect[];
+}
+
+/**
+ * 페이지 탭 끌어서 순서 바꾸기. 끄는 탭은 좌우로만 움직이고(탭 줄 양 끝까지), 다른 탭들이
+ * 비켜서 들어갈 자리를 보인다. HTML 끌어 놓기는 끄는 모양이 마우스를 자유롭게 따라다녀서 쓰지 않는다.
+ */
+function useTabDrag(count: number, onMove: (from: number, to: number) => void) {
+  const tabs = useRef<(HTMLDivElement | null)[]>([]);
+  const [state, setState] = useState<DragState | null>(null);
+  /** 끌기를 막 끝냈으면 뒤따르는 클릭(탭 고르기)을 무시한다 */
+  const justDragged = useRef(false);
+
+  /**
+   * 들어갈 자리: 끄는 방향 쪽 모서리가 다른 탭의 가운데를 지나면 그 탭과 자리를 바꾼다.
+   * (가운데로 재면 끄는 탭이 끝 탭보다 넓을 때 줄 끝에 막혀 끝 자리로 못 간다.)
+   */
+  const targetIndex = (s: DragState) => {
+    const r = s.rects[s.from];
+    const left = r.left + s.dx;
+    const right = r.right + s.dx;
+    let to = s.from;
+    s.rects.forEach((o, j) => {
+      const c = o.left + o.width / 2;
+      if (s.dx > 0 && j > s.from && right > c) to = j;
+      if (s.dx < 0 && j < s.from && left < c && to === s.from) to = j;
+    });
+    return to;
+  };
+
+  const onPointerDown = (e: React.PointerEvent, i: number) => {
+    if (e.button !== 0 || (e.target as HTMLElement).closest("[data-no-drag]")) return;
+    const rects = tabs.current.slice(0, count).map((el) => el!.getBoundingClientRect());
+    setState({ from: i, pointerId: e.pointerId, startX: e.clientX, dx: 0, started: false, rects });
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!state || e.pointerId !== state.pointerId) return;
+    let dx = e.clientX - state.startX;
+    const started = state.started || Math.abs(dx) > DRAG_THRESHOLD;
+    if (!started) return;
+    if (!state.started) e.currentTarget.setPointerCapture(e.pointerId);
+    // 탭 줄 양 끝을 넘지 않게
+    const r = state.rects[state.from];
+    const first = state.rects[0];
+    const last = state.rects[state.rects.length - 1];
+    dx = Math.max(first.left - r.left, Math.min(last.right - r.right, dx));
+    setState({ ...state, dx, started });
+  };
+
+  const onPointerUp = (e: React.PointerEvent) => {
+    if (!state || e.pointerId !== state.pointerId) return;
+    if (state.started) {
+      justDragged.current = true;
+      // 클릭이 따라오지 않는 경우(탭 밖에서 놓음)에도 다음 클릭은 받게
+      window.setTimeout(() => (justDragged.current = false), 0);
+      const to = targetIndex(state);
+      if (to !== state.from) onMove(state.from, to);
+    }
+    setState(null);
+  };
+
+  const onClickCapture = (e: React.MouseEvent) => {
+    if (justDragged.current) {
+      justDragged.current = false;
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  };
+
+  /** 끄는 탭은 마우스를 따라 좌우로, 사이에 있는 탭은 한 칸 비켜선다 */
+  const style = (i: number): React.CSSProperties | undefined => {
+    if (!state?.started) return undefined;
+    if (i === state.from) return { transform: `translateX(${state.dx}px)` };
+    const to = targetIndex(state);
+    const r = state.rects[state.from];
+    // 비켜서는 거리 = 끄는 탭 너비 + 탭 사이 간격. 간격은 옆 탭과 잰다 (맨 오른쪽 탭이면 왼쪽 탭과).
+    const after = state.rects[state.from + 1];
+    const before = state.rects[state.from - 1];
+    const gap = after ? after.left - r.right : before ? r.left - before.right : 0;
+    const step = r.width + gap;
+    let shift = 0;
+    if (state.from < i && i <= to) shift = -step;
+    if (to <= i && i < state.from) shift = step;
+    return { transform: `translateX(${shift}px)`, transition: "transform 150ms ease" };
+  };
+
+  return {
+    tabs,
+    active: state?.started ? state.from : null,
+    onPointerDown,
+    onPointerMove,
+    onPointerUp,
+    onClickCapture,
+    style,
+  };
 }

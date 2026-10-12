@@ -24,7 +24,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     TPM_LEFTALIGN, TPM_RIGHTALIGN, TPM_TOPALIGN, WM_NULL,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub enum Mode {
     Numbers,
     Deck,

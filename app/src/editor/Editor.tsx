@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
-import { Redo2, Undo2 } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import { CircleHelp, Redo2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/i18n";
 import { installDeckKeyForwarding } from "./api";
 import { ButtonPanel } from "./ButtonPanel";
 import { KeyGrid, type Selection } from "./KeyGrid";
+import { Onboarding } from "./Onboarding";
 import { PageTabs } from "./PageTabs";
 import { useEditorConfig, type SaveStatus } from "./useEditorConfig";
 
@@ -14,8 +16,15 @@ export function Editor() {
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Selection | null>({ kind: "button", key: "7" });
 
+  const [onboarding, setOnboarding] = useState(false);
+
   // 편집기가 앞에 있을 때도 넘패드 덱 키가 동작하게
   useEffect(() => installDeckKeyForwarding(), []);
+
+  // 첫 실행이면 온보딩부터
+  useEffect(() => {
+    void invoke<boolean>("onboarding_pending").then(setOnboarding);
+  }, []);
 
   // 되돌리기·밖에서 고침으로 페이지가 줄면 범위 안으로
   const pageCount = config?.pages.length ?? 0;
@@ -38,6 +47,9 @@ export function Editor() {
           <Button variant="ghost" size="icon-sm" onClick={redo} disabled={!canRedo} title={`${t.redo} (Ctrl+Y)`}>
             <Redo2 />
           </Button>
+          <Button variant="ghost" size="icon-sm" onClick={() => setOnboarding(true)} title={t.help}>
+            <CircleHelp />
+          </Button>
         </div>
       </header>
 
@@ -51,6 +63,17 @@ export function Editor() {
           <ButtonPanel config={config} page={page} selected={selected} update={update} />
         </aside>
       </main>
+
+      {onboarding && (
+        <Onboarding
+          config={config}
+          update={update}
+          onClose={() => {
+            setOnboarding(false);
+            setPage(0);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -81,6 +81,24 @@ fn list_presets(lang: Lang) -> Vec<Preset> {
     presets::all(lang)
 }
 
+/// 지금 모드 (온보딩 ① NumLock 끄기).
+#[tauri::command]
+fn get_mode(runtime: State<'_, Arc<Runtime>>) -> tray::Mode {
+    runtime.mode()
+}
+
+/// 첫 실행이라 온보딩을 보여줘야 하는가.
+#[tauri::command]
+fn onboarding_pending(runtime: State<'_, Arc<Runtime>>) -> bool {
+    runtime.onboarding_pending()
+}
+
+/// 온보딩을 끝냈거나 건너뛰었다 (이번 실행에서 다시 띄우지 않는다).
+#[tauri::command]
+fn finish_onboarding(runtime: State<'_, Arc<Runtime>>) {
+    runtime.finish_onboarding();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -99,7 +117,10 @@ pub fn run() {
             cancel_recording,
             record_key,
             press_deck_key,
-            list_presets
+            list_presets,
+            get_mode,
+            onboarding_pending,
+            finish_onboarding
         ])
         .setup(|app| {
             let runtime = Arc::new(Runtime::start()?);
@@ -110,7 +131,12 @@ pub fn run() {
                 .ok()
                 .map(Arc::new);
             runtime.attach_ui(app.handle().clone(), tray, osd);
+            // 첫 실행: 편집기를 열어 온보딩을 보여준다.
+            let first_run = runtime.onboarding_pending();
             app.manage(runtime);
+            if first_run {
+                editor::open(app.handle());
+            }
             Ok(())
         })
         .on_menu_event(|app, event| {

@@ -8,6 +8,7 @@
 //! 때문이다.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -85,6 +86,8 @@ impl State {
 
 /// 편집기에 보내는 이벤트: 파일이 밖에서 바뀌어 다시 읽었다.
 pub const CONFIG_CHANGED: &str = "config://changed";
+/// 편집기에 보내는 이벤트: 모드(`"deck"` | `"numbers"` | `"paused"`)가 바뀌었을 수 있다 (온보딩).
+pub const MODE_CHANGED: &str = "mode://changed";
 /// 단축키 녹화 결과. 프런트엔드 `src/editor/api.ts`의 `RecordResult`와 모양이 같아야 한다.
 ///
 /// 녹화는 편집기 화면이 받은 키로 한다 (전역 훅 녹화 모드를 쓰지 않는다). 편집기 창이
@@ -145,6 +148,8 @@ pub struct Runtime {
     executor: Executor,
     config_path: PathBuf,
     _watcher: Option<ConfigWatcher>,
+    /// 설정 파일이 없어 새로 만들었다 = 첫 실행. 온보딩을 끝내거나 건너뛰면 꺼진다.
+    onboarding: AtomicBool,
 }
 
 impl Runtime {
@@ -152,6 +157,7 @@ impl Runtime {
     /// [`Runtime::attach_ui`]로 나중에 붙인다 (메인 스레드에서 만들어야 한다).
     pub fn start() -> Result<Runtime, String> {
         let config_path = config::default_path().ok_or("APPDATA 환경 변수가 없습니다")?;
+        let first_run = !config_path.exists();
         // 설정이 깨져 있으면 기본 설정으로 돌되 파일은 덮어쓰지 않는다.
         let (config, config_error) = match config::load_or_create(&config_path) {
             Ok(c) => (c, None),
@@ -233,6 +239,7 @@ impl Runtime {
             executor,
             config_path,
             _watcher: watcher,
+            onboarding: AtomicBool::new(first_run),
         })
     }
 
@@ -255,6 +262,19 @@ impl Runtime {
                 ..Effects::default()
             },
         );
+    }
+
+    pub fn mode(&self) -> Mode {
+        self.state.lock().unwrap().mode()
+    }
+
+    /// 첫 실행이라 온보딩을 보여줘야 하는가.
+    pub fn onboarding_pending(&self) -> bool {
+        self.onboarding.load(Ordering::Relaxed)
+    }
+
+    pub fn finish_onboarding(&self) {
+        self.onboarding.store(false, Ordering::Relaxed);
     }
 
     pub fn config(&self) -> Config {
@@ -477,6 +497,9 @@ fn apply_inner(ui: &Mutex<Ui>, effects: Effects) {
     if let Some(app) = &app {
         if let Some(config) = effects.config_changed {
             let _ = app.emit_to(crate::editor::LABEL, CONFIG_CHANGED, config);
+        }
+        if let Some(view) = &effects.tray {
+            let _ = app.emit_to(crate::editor::LABEL, MODE_CHANGED, view.mode);
         }
     }
     if let (Some(tray), Some(view)) = (tray, effects.tray) {

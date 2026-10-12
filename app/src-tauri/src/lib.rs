@@ -14,11 +14,14 @@ use deck_core::action::apps::AppEntry;
 use deck_core::config::{Action, Config};
 use deck_core::key::{NumpadKey, RawKey};
 use deck_core::presets::{self, Lang, Preset};
-use tauri::{Manager, State};
+use tauri::{AppHandle, Manager, State};
+use tauri_plugin_autostart::ManagerExt;
 
 use osd::Osd;
 use runtime::Runtime;
-use tray::{Tray, MENU_EDITOR, MENU_OPEN_CONFIG, MENU_PAUSE, MENU_QUIT, MENU_STOP_SOUNDS};
+use tray::{
+    Tray, MENU_AUTOSTART, MENU_EDITOR, MENU_OPEN_CONFIG, MENU_PAUSE, MENU_QUIT, MENU_STOP_SOUNDS,
+};
 
 #[tauri::command]
 fn get_config(runtime: State<'_, Arc<Runtime>>) -> Config {
@@ -111,6 +114,25 @@ fn finish_onboarding(runtime: State<'_, Arc<Runtime>>) {
     runtime.finish_onboarding();
 }
 
+/// Windows 시작 시 실행 (`HKCU\...\Run`)이 켜져 있는가. 읽지 못하면 꺼진 것으로 본다.
+fn autostart_enabled(app: &AppHandle) -> bool {
+    app.autolaunch().is_enabled().unwrap_or(false)
+}
+
+/// 트레이 메뉴: Windows 시작 시 실행 켜기/끄기.
+fn toggle_autostart(app: &AppHandle, runtime: &Runtime) {
+    let manager = app.autolaunch();
+    let result = if autostart_enabled(app) {
+        manager.disable()
+    } else {
+        manager.enable()
+    };
+    if let Err(e) = result {
+        eprintln!("Windows 시작 시 실행을 바꿀 수 없습니다: {e}");
+    }
+    runtime.set_autostart_checked(autostart_enabled(app));
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -120,6 +142,7 @@ pub fn run() {
             editor::open(app);
         }))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_autostart::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             get_config,
             save_config,
@@ -138,7 +161,18 @@ pub fn run() {
         ])
         .setup(|app| {
             let runtime = Arc::new(Runtime::start()?);
-            let tray = Tray::create(app.handle(), &runtime.view())?;
+            // 첫 실행이면 Windows 시작 시 실행을 켠다 (트레이 메뉴에서 끌 수 있다). 개발 빌드는
+            // 켜지 않는다: 개발용 실행 파일이 로그인 때 뜨면 안 된다.
+            if runtime.onboarding_pending() && !cfg!(debug_assertions) {
+                if let Err(e) = app.autolaunch().enable() {
+                    eprintln!("Windows 시작 시 실행을 켤 수 없습니다: {e}");
+                }
+            }
+            let tray = Tray::create(
+                app.handle(),
+                &runtime.view(),
+                autostart_enabled(app.handle()),
+            )?;
             // OSD를 못 만들어도 덱은 동작해야 한다.
             let osd = Osd::create(app.handle())
                 .map_err(|e| eprintln!("OSD 창을 만들 수 없습니다: {e}"))
@@ -160,6 +194,7 @@ pub fn run() {
                 MENU_PAUSE => runtime.toggle_pause(),
                 MENU_STOP_SOUNDS => runtime.stop_sounds(),
                 MENU_OPEN_CONFIG => runtime.open_config(),
+                MENU_AUTOSTART => toggle_autostart(app, &runtime),
                 MENU_QUIT => app.exit(0),
                 _ => {}
             }

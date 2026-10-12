@@ -307,6 +307,14 @@ impl Runtime {
         );
     }
 
+    /// 트레이 Windows 시작 시 실행 체크를 실제 상태에 맞춘다.
+    pub fn set_autostart_checked(&self, on: bool) {
+        let tray = self.ui.lock().unwrap().tray.clone();
+        if let Some(tray) = tray {
+            tray.set_autostart(on);
+        }
+    }
+
     pub fn lang(&self) -> Lang {
         i18n::current()
     }

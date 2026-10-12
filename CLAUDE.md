@@ -25,9 +25,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 `app/src-tauri/src/` 구성:
 
 - `lib.rs`: Tauri 진입점. 단일 인스턴스(훅이 둘이면 버튼이 두 번 실행됨, 두 번째 실행은 편집기를 연다), 창 없이 상주(`ExitRequested` 막음), 트레이 메뉴 이벤트, command `get_config`·`save_config`·`test_action`·`list_apps`(spawn_blocking + COM)·`start_recording`·`cancel_recording`·`record_key`·`press_deck_key`·`list_presets`·`get_mode`·`get_lang`·`onboarding_pending`·`finish_onboarding`, 첫 실행(설정 파일 없음)이면 편집기를 열어 온보딩, `tauri-plugin-dialog`(파일·폴더 고르기).
+- 앱 아이콘(`icons/`): 원본 `icons/icon.svg`(차콜 바탕 3×3 키캡, 오른쪽 위 파랑). `app/scripts/make-icons.py`(Pillow)가 모든 파일을 만든다 — 16~44px는 줄이지 않고 픽셀 격자에 맞춰 따로 그린다. `tauri icon`으로 다시 만들지 말 것(작은 크기가 번진다).
 - `editor.rs`: 편집기 창. 열 때 만들고 닫으면 파기. OSD와 같은 `BROWSER_ARGS`.
 - `runtime.rs`: 코어 연결. 훅 이벤트를 받는 디스패처 스레드 → `Deck` → `Executor`. 설정 감시(밖에서 바뀌면 편집기에 `config://changed`), 편집기 저장(`save_config`: 코어 검증·저장 후 즉시 반영), 일시정지(`HookHandle::set_paused`), 상태를 트레이에 반영.
-- `tray.rs`: 트레이 아이콘(32×32 RGBA를 코드로 그림: 숫자 모드=테두리, 덱 모드=파란 칸, 일시정지=회색·가운데 줄 빔)과 메뉴. 왼쪽 클릭 = 편집기, 오른쪽 클릭 = 메뉴. 메뉴는 `TrackPopupMenuEx`로 직접 띄워 작업 영역 안에 둔다(전체 화면에서 작업 표시줄에 가려지던 문제).
+- `tray.rs`: 트레이 아이콘(3×3 칸을 코드로 그림: 덱 모드=채움, 숫자 모드=테두리, 일시정지=가운데 줄 빔. 작업 표시줄 배율의 크기(16·20·24·32, 표에 없는 크기는 아래 크기를 가운데)로 직접 그려 번지지 않게 하고, 색은 작업 표시줄 밝기(`SystemUsesLightTheme`)에 맞춤 — `theme.rs`가 보이지 않는 최상위 창으로 `WM_SETTINGCHANGE`·배율 변경을 받아 다시 그린다)과 메뉴. 왼쪽 클릭 = 편집기, 오른쪽 클릭 = 메뉴. 메뉴는 `TrackPopupMenuEx`로 직접 띄워 작업 영역 안에 둔다(전체 화면에서 작업 표시줄에 가려지던 문제).
 - `osd.rs`: OSD 창. 시작할 때 숨긴 채 만들고 `WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW` + `set_ignore_cursor_events`(클릭 통과). 마우스가 있는 모니터 작업 영역 우측 하단에 `SWP_NOACTIVATE`로 띄운다. 창 조작은 모두 비동기(`SWP_ASYNCWINDOWPOS`, `ShowWindowAsync`). 내용은 `osd://update` 이벤트로 보낸다. 숨김 예약은 세대 번호로 무효화, `-` 키는 고정 토글. WebView2는 `--disable-gpu --disable-gpu-compositing`으로 띄운다(상주 메모리 약 116MB, GPU를 켜면 약 223MB). 편집기 창도 같은 인자를 써야 한다.
 - **교착 주의**: `runtime.rs`는 상태 잠금 안에서 계산만 하고 트레이·OSD 갱신은 잠금을 푼 뒤 한다(`Effects` → `apply`). 트레이 갱신은 메인 스레드를 기다리는데 메뉴 처리(메인 스레드)도 같은 잠금을 잡기 때문이다.
 

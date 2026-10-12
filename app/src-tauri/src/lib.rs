@@ -84,6 +84,32 @@ fn list_presets(lang: Lang) -> Vec<Preset> {
     presets::all(lang)
 }
 
+/// 설정 창의 앱 정보. 프런트엔드 `src/editor/SettingsDialog.tsx`의 `AppInfo`와 모양이 같아야 한다.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppInfo {
+    version: String,
+    config_path: String,
+}
+
+#[tauri::command]
+fn app_info(app: AppHandle, runtime: State<'_, Arc<Runtime>>) -> AppInfo {
+    AppInfo {
+        version: app.package_info().version.to_string(),
+        config_path: runtime.config_path().to_string_lossy().into_owned(),
+    }
+}
+
+#[tauri::command]
+fn open_config(runtime: State<'_, Arc<Runtime>>) {
+    runtime.open_config();
+}
+
+#[tauri::command]
+fn open_config_folder(runtime: State<'_, Arc<Runtime>>) {
+    runtime.open_config_folder();
+}
+
 /// 지금 언어 (설정의 `language`, 없으면 Windows 표시 언어).
 #[tauri::command]
 fn get_lang(runtime: State<'_, Arc<Runtime>>) -> Lang {
@@ -155,6 +181,9 @@ pub fn run() {
             list_presets,
             get_mode,
             get_lang,
+            app_info,
+            open_config,
+            open_config_folder,
             system_lang,
             onboarding_pending,
             finish_onboarding

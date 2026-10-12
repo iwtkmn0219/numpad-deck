@@ -316,9 +316,11 @@ pub fn run() {
             {
                 let app = app.handle().clone();
                 theme::watch(move || {
-                    if let Some(tray) = app.state::<Arc<Runtime>>().tray() {
+                    let runtime = app.state::<Arc<Runtime>>();
+                    if let Some(tray) = runtime.tray() {
                         tray.refresh_icon();
                     }
+                    runtime.reposition_mic_badge();
                 });
             }
             let autostarted = std::env::args().any(|a| a == AUTOSTART_ARG);

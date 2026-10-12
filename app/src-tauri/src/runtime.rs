@@ -40,6 +40,8 @@ struct State {
     recorder: Option<Recorder>,
     /// 마지막으로 안 마이크 상태(버튼으로 바꿨거나 감시 스레드가 읽음). 장치가 없으면 `None`.
     mic_muted: Option<bool>,
+    /// `mic_muted`를 버튼이 바꿀 때마다 늘린다. 감시 스레드가 읽는 사이 바뀐 것을 알아챈다.
+    mic_gen: u64,
     /// 마지막으로 배지에 보낸 순번
     badge_seq: u64,
     /// 설치할 수 있는 새 버전. OSD 아래에 한 줄로 알린다 (OSD를 따로 띄우지는 않는다).
@@ -217,6 +219,7 @@ impl Runtime {
             last_button: None,
             recorder: None,
             mic_muted: None,
+            mic_gen: 0,
             badge_seq: 0,
             update_available: None,
         }));
@@ -229,16 +232,20 @@ impl Runtime {
             let state = Arc::clone(&state);
             let ui = Arc::clone(&ui);
             spawn_named("deck-mic-watch", move || {
-                deck_core::action::with_com(|| {
+                deck_core::action::with_com_mta(|| {
                     let mut first = true;
                     loop {
-                        let active = state.lock().unwrap().config.mic_indicator_active();
+                        let (active, gen) = {
+                            let s = state.lock().unwrap();
+                            (s.config.mic_indicator_active(), s.mic_gen)
+                        };
                         if first || active {
                             // 읽지 못하면 이번 차례는 건너뛴다 (직전 상태 유지)
                             if let Ok(now) = deck_core::action::mic::all_muted() {
                                 let effects = {
                                     let mut s = state.lock().unwrap();
-                                    (s.mic_muted != now).then(|| {
+                                    // 읽는 사이 버튼이 바꿨으면 이 값은 오래된 것이다
+                                    (s.mic_gen == gen && s.mic_muted != now).then(|| {
                                         s.mic_muted = now;
                                         Effects {
                                             tray: Some(s.view()),
@@ -379,6 +386,14 @@ impl Runtime {
 
     pub fn tray(&self) -> Option<Tray> {
         self.ui.lock().unwrap().tray.clone()
+    }
+
+    /// 화면 구성·배율·작업 영역이 바뀌었을 때 보이는 마이크 배지의 위치를 다시 잡는다.
+    pub fn reposition_mic_badge(&self) {
+        let badge = self.ui.lock().unwrap().mic_badge.clone();
+        if let Some(badge) = badge {
+            badge.reposition();
+        }
     }
 
     /// 트레이 Windows 시작 시 실행 체크를 실제 상태에 맞춘다.
@@ -636,6 +651,7 @@ fn exec_loop(events: Receiver<ExecEvent>, state: &Mutex<State>, ui: &Mutex<Ui>) 
             let effects = {
                 let mut s = state.lock().unwrap();
                 s.mic_muted = Some(muted);
+                s.mic_gen += 1;
                 Effects {
                     tray: Some(s.view()),
                     mic_badge: Some(s.badge_effect()),

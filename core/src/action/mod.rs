@@ -15,7 +15,9 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::Duration;
 
-use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
+use windows::Win32::System::Com::{
+    CoInitializeEx, CoUninitialize, COINIT, COINIT_APARTMENTTHREADED, COINIT_MULTITHREADED,
+};
 
 use crate::config::{Action, MediaCommand};
 use crate::inject;
@@ -65,7 +67,7 @@ impl Executor {
 }
 
 fn worker(jobs: Receiver<Job>, events: Sender<ExecEvent>) {
-    let _com = ComGuard::init();
+    let _com = ComGuard::init(COINIT_APARTMENTTHREADED);
     let audio = Audio::start();
     for job in jobs {
         match job.action {
@@ -76,7 +78,7 @@ fn worker(jobs: Receiver<Job>, events: Sender<ExecEvent>) {
                     thread::Builder::new()
                         .name("deck-sequence".into())
                         .spawn(move || {
-                            let _com = ComGuard::init();
+                            let _com = ComGuard::init(COINIT_APARTMENTTHREADED);
                             let result = steps
                                 .iter()
                                 .try_for_each(|step| run_one(step, &audio, &events));
@@ -158,7 +160,14 @@ fn media_vk(command: MediaCommand) -> u16 {
 /// 이 스레드에 COM을 초기화한 채로 `f`를 실행한다. 실행기 밖에서 [`mic`] 진단 함수를
 /// 부를 때 쓴다.
 pub fn with_com<T>(f: impl FnOnce() -> T) -> T {
-    let _com = ComGuard::init();
+    let _com = ComGuard::init(COINIT_APARTMENTTHREADED);
+    f()
+}
+
+/// [`with_com`]과 같지만 MTA. 메시지를 처리하지 않고 잠만 자는 스레드용 (STA는 메시지를
+/// 처리해야 한다).
+pub fn with_com_mta<T>(f: impl FnOnce() -> T) -> T {
+    let _com = ComGuard::init(COINIT_MULTITHREADED);
     f()
 }
 
@@ -166,8 +175,8 @@ pub fn with_com<T>(f: impl FnOnce() -> T) -> T {
 struct ComGuard(bool);
 
 impl ComGuard {
-    fn init() -> Self {
-        let ok = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }.is_ok();
+    fn init(model: COINIT) -> Self {
+        let ok = unsafe { CoInitializeEx(None, model) }.is_ok();
         ComGuard(ok)
     }
 }

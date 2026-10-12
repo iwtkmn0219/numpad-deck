@@ -89,6 +89,14 @@ impl MicBadge {
             }
         }
     }
+
+    /// 보이는 중이면 위치를 다시 잡는다 (모니터·배율·작업 영역이 바뀐 뒤).
+    pub fn reposition(&self) {
+        let inner = self.inner.lock().unwrap();
+        if let (Some(hwnd), Some(true)) = (inner.hwnd, inner.applied) {
+            place_and_show(hwnd);
+        }
+    }
 }
 
 /// 요청받은 상태와 창이 다르면 맞춘다 (비동기 호출이라 잠금 안에서 불러도 막히지 않는다).
@@ -122,8 +130,17 @@ fn create(app: &AppHandle) -> tauri::Result<isize> {
         .visible(false)
         .additional_browser_args(crate::osd::BROWSER_ARGS)
         .build()?;
-    window.set_ignore_cursor_events(true)?;
-    let hwnd = window.hwnd()?.0 as isize;
+    // 반쯤 만든 창이 남으면 같은 이름으로 다시 만들 수 없으므로 실패하면 지운다
+    let hwnd = match window
+        .set_ignore_cursor_events(true)
+        .and_then(|()| window.hwnd())
+    {
+        Ok(h) => h.0 as isize,
+        Err(e) => {
+            let _ = window.destroy();
+            return Err(e);
+        }
+    };
     unsafe {
         let h = HWND(hwnd as *mut _);
         let style = GetWindowLongPtrW(h, GWL_EXSTYLE);

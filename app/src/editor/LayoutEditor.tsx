@@ -185,7 +185,7 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
               <div
                 className={cn(
                   "pointer-events-none absolute rounded-lg border-2 border-dashed",
-                  drag.ok ? "border-blue-500 bg-blue-500/10" : "border-red-500 bg-red-500/10",
+                  drag.ok ? "border-selection bg-selection-soft" : "border-red-500 bg-red-500/10",
                 )}
                 style={box(drag.x, drag.y, places.find((p) => p.key === drag.key)!)}
               />
@@ -199,7 +199,7 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
                 className={cn(
                   "absolute flex touch-none items-center justify-center rounded-lg border text-sm font-medium select-none",
                   p.key === selected
-                    ? "border-blue-500 bg-blue-500 text-white"
+                    ? "border-selection bg-selection text-white"
                     : SYSTEM.includes(p.key)
                       ? "border-amber-500/50 bg-amber-500/15 text-amber-900 hover:bg-amber-500/25 dark:text-amber-200"
                       : p.key === "NumLock"

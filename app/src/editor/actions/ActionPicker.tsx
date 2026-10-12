@@ -24,7 +24,7 @@ export function ActionPicker({ onPick, inSequence = false, compact = false }: Pr
             onClick={() => onPick(kind)}
             className="flex items-start gap-3 rounded-xl border bg-card p-3 text-left transition-colors hover:border-foreground/30 hover:bg-muted/40"
           >
-            <span className="mt-0.5 rounded-lg bg-blue-500/10 p-1.5 text-blue-600">
+            <span className="mt-0.5 rounded-lg bg-selection-soft p-1.5 text-selection">
               <Icon className="size-4" />
             </span>
             <span className="min-w-0">

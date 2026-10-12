@@ -172,6 +172,9 @@ fn apply_default_autostart(app: &AppHandle, runtime: &Runtime) {
 /// 개발 서버가 있어야 보임)이 로그인 때 뜨게 되기 때문이다 (실제로 겪음).
 const AUTOSTART_AVAILABLE: bool = !cfg!(debug_assertions);
 
+/// 로그인 때 자동 실행으로 켜졌다는 표시 (`Run` 값에 붙는 인자)
+const AUTOSTART_ARG: &str = "--autostart";
+
 /// 설정 창에 보내는 상태. 프런트엔드 `SettingsDialog.tsx`의 `Autostart`와 모양이 같아야 한다.
 #[derive(serde::Serialize)]
 struct AutostartState {
@@ -232,7 +235,12 @@ pub fn run() {
             editor::open(app);
         }))
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_autostart::Builder::new().build())
+        // 로그인 때 자동 실행이면 이 인자가 붙는다 (그때만 창 없이 트레이에서 시작)
+        .plugin(
+            tauri_plugin_autostart::Builder::new()
+                .args([AUTOSTART_ARG])
+                .build(),
+        )
         .invoke_handler(tauri::generate_handler![
             get_config,
             save_config,
@@ -272,7 +280,10 @@ pub fn run() {
             // 첫 실행: 편집기를 열어 온보딩을 보여준다.
             let first_run = runtime.onboarding_pending();
             app.manage(runtime);
-            if first_run {
+            // 첫 실행(온보딩)이거나 사용자가 직접 실행했으면 편집기를 연다. 로그인 때 자동
+            // 실행이면 조용히 트레이에만 둔다. 직접 실행했는데 창이 안 뜨면 켜졌는지 알 수 없다.
+            let autostarted = std::env::args().any(|a| a == AUTOSTART_ARG);
+            if first_run || !autostarted {
                 editor::open(app.handle());
             }
             Ok(())

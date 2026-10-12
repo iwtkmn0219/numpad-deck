@@ -1,6 +1,7 @@
 //! 마이크 꺼짐 배지: 마이크가 꺼져 있는 동안 주 모니터 위쪽 가운데에 계속 보인다.
 //!
-//! OSD처럼 포커스를 뺏지 않고 클릭이 통과한다 (`osd.rs` 참고). 마이크 버튼이 없는
+//! OSD처럼 포커스를 뺏지 않고 클릭이 통과한다 (`osd.rs` 참고). 화면 공유·녹화에는
+//! 잡히지 않는다 (`WDA_EXCLUDEFROMCAPTURE`). 마이크 버튼이 없는
 //! 사용자에게 WebView 메모리를 쓰지 않도록 처음 보여야 할 때 창을 만들고, 그 뒤로는
 //! 숨기고 보이기만 한다. 글자는 화면이 `lang://changed`로 직접 바꾼다.
 //!
@@ -16,9 +17,9 @@ use windows::Win32::Graphics::Gdi::{
     GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTOPRIMARY,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetWindowLongPtrW, GetWindowRect, SetWindowLongPtrW, SetWindowPos, ShowWindowAsync,
-    GWL_EXSTYLE, HWND_TOPMOST, SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE, SWP_NOSIZE, SWP_SHOWWINDOW,
-    SW_HIDE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+    GetWindowLongPtrW, GetWindowRect, SetWindowDisplayAffinity, SetWindowLongPtrW, SetWindowPos,
+    ShowWindowAsync, GWL_EXSTYLE, HWND_TOPMOST, SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE, SWP_NOSIZE,
+    SWP_SHOWWINDOW, SW_HIDE, WDA_EXCLUDEFROMCAPTURE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
 };
 
 const LABEL: &str = "mic-badge";
@@ -149,6 +150,9 @@ fn create(app: &AppHandle) -> tauri::Result<isize> {
             GWL_EXSTYLE,
             style | (WS_EX_NOACTIVATE.0 | WS_EX_TOOLWINDOW.0) as isize,
         );
+        // 화면 공유·녹화에는 빼고 내 모니터에만 보인다 (회의 상대가 배지를 보지 않게).
+        // Windows 10 2004 이전에는 실패하고, 그때는 공유 화면에도 보인다.
+        let _ = SetWindowDisplayAffinity(h, WDA_EXCLUDEFROMCAPTURE);
     }
     Ok(hwnd)
 }

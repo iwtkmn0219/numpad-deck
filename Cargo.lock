@@ -2415,7 +2415,7 @@ dependencies = [
 
 [[package]]
 name = "numpad-deck"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "numpad-deck-core",
  "serde",
@@ -2430,7 +2430,7 @@ dependencies = [
 
 [[package]]
 name = "numpad-deck-core"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "notify-debouncer-mini",
  "rodio",

@@ -38,6 +38,8 @@ export function PageTabs({ config, page, onSelect, update }: Props) {
   const [renaming, setRenaming] = useState<number | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
   const [presetOpen, setPresetOpen] = useState(false);
+  /** 메뉴가 열린 탭 (▾ 또는 오른쪽 클릭) */
+  const [menuFor, setMenuFor] = useState<number | null>(null);
   const pages = config.pages;
 
   const addPage = () => {
@@ -105,13 +107,18 @@ export function PageTabs({ config, page, onSelect, update }: Props) {
               className="h-8 max-w-48 truncate pr-1 pl-3"
               onClick={() => onSelect(i)}
               onDoubleClick={() => setRenaming(i)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                onSelect(i);
+                setMenuFor(i);
+              }}
               title={p.name}
             >
               <span className="mr-1.5 text-xs text-muted-foreground tabular-nums">{i + 1}</span>
               {p.name}
             </button>
           )}
-          <DropdownMenu>
+          <DropdownMenu open={menuFor === i} onOpenChange={(open) => setMenuFor(open ? i : null)}>
             <DropdownMenuTrigger asChild>
               <button
                 className="mr-1 rounded p-0.5 text-muted-foreground opacity-60 group-hover:opacity-100 hover:bg-muted"

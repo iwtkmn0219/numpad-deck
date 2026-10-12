@@ -39,6 +39,8 @@ struct State {
     recorder: Option<Recorder>,
     /// 마이크 음소거 버튼으로 마지막에 바꾼 상태. OSD가 버튼에 켜짐/꺼짐을 보인다.
     mic_muted: Option<bool>,
+    /// 설치할 수 있는 새 버전. OSD 아래에 한 줄로 알린다 (OSD를 따로 띄우지는 않는다).
+    update_available: Option<String>,
 }
 
 impl State {
@@ -84,6 +86,7 @@ impl State {
             highlight: highlight.map(|k| k.label().to_string()),
             error,
             mic_muted: self.mic_muted,
+            update: self.update_available.clone(),
             layout: self.config.layout.clone(),
             system_keys: self.config.system_keys.clone(),
         }
@@ -195,6 +198,7 @@ impl Runtime {
             last_button: None,
             recorder: None,
             mic_muted: None,
+            update_available: None,
         }));
         let ui: Arc<Mutex<Ui>> = Arc::default();
 
@@ -305,6 +309,22 @@ impl Runtime {
                 ..Effects::default()
             },
         );
+    }
+
+    /// 새 버전 알림을 OSD 내용에 반영한다 (띄우지 않고 바꾸기만).
+    pub fn set_update_available(&self, version: Option<String>) {
+        let effects = {
+            let mut s = self.state.lock().unwrap();
+            if s.update_available == version {
+                return;
+            }
+            s.update_available = version;
+            Effects {
+                osd_refresh: Some(s.payload(None, None)),
+                ..Effects::default()
+            }
+        };
+        apply(&self.ui, effects);
     }
 
     pub fn tray(&self) -> Option<Tray> {

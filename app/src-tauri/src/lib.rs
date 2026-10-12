@@ -262,6 +262,7 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         .manage(update::Updates::default())
         .invoke_handler(tauri::generate_handler![
             get_config,

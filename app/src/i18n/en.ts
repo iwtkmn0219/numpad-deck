@@ -15,6 +15,7 @@ export const en: Dict = {
     numlockOn: "on",
     numlockOff: "off",
     numbersHint: "Turn NumLock off to use the buttons.",
+    update: (v: string) => `Update ${v} ready · install from the tray menu`,
   },
   onboarding: {
     step: (n: number, total: number) => `${n} / ${total}`,
@@ -102,6 +103,7 @@ export const en: Dict = {
         check: "Check for updates",
         install: (v: string) => `Install ${v}`,
       },
+      banner: (v: string) => `Version ${v} is available.`,
       configTitle: "Config file",
       configBody: "All buttons, pages and the layout are saved in this one file. Copy the folder to back it up.",
       openFile: "Open file",

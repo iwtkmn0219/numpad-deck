@@ -22,6 +22,8 @@ export interface OsdPayload {
   error: string | null;
   /** 마이크 음소거 버튼으로 마지막에 바꾼 상태 (아직 안 눌렀으면 null) */
   micMuted: boolean | null;
+  /** 설치할 수 있는 새 버전 (없으면 null) */
+  update: string | null;
   /** 넘패드 모양 (null이면 표준) */
   layout: KeyPlace[] | null;
   /** 시스템 키 역할 (null이면 기본) */

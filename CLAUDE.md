@@ -38,7 +38,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 작업 방식
 
 - 사용자에게 물어볼 것이 있으면 텍스트로 나열하지 말고 **질의응답 도구(AskUserQuestion)로 한 번에 하나씩** 묻는다. 답을 받은 뒤 다음 질문으로 넘어간다.
-- **브랜치 (2026-10-12부터)**: 기능·수정마다 `develop`에서 `feature/…` 브랜치를 만들어 작업하고, 사용자 확인이 끝나면 `develop`에 병합한다(병합한 기능 브랜치는 지운다). `main`에는 사용자가 **버전을 올리자고 할 때만** `develop`을 병합하고 그 커밋에 `v0.x.0` 태그를 단다. 원격은 `origin` = github.com/iwtkmn0219/numpad-deck (main·develop·태그).
+- **브랜치 (2026-10-12부터)**: 기능·수정마다 `develop`에서 `feature/…` 브랜치를 만들어 작업하고, 사용자 확인이 끝나면 `develop`에 병합한다(병합한 기능 브랜치는 지운다). `main`에는 사용자가 **버전을 올리자고 할 때만** `develop`을 병합하고 그 커밋에 `v0.x.0` 태그를 단다. 원격은 `origin` = github.com/iwtkmn0219/numpad-deck (공개 저장소). `develop`에 병합할 때 `develop`을, 버전을 올릴 때 `main`과 태그를 올린다. 기능 브랜치는 로컬에만. 수동 시험 체크리스트(`docs/*-checklist.md`, 개인 시험 기록)는 `.gitignore`로 **로컬에만** 둔다.
 - 커밋 메시지에 `Co-Authored-By` 줄을 넣지 않는다 (사용자 요청으로 기존 커밋에서도 모두 지웠다).
 - 사용자 PC에 클릭·글자 입력을 보내는 UI 자동 시험을 하지 않는다 (창이 앞으로 오지 않아 다른 앱에 입력된 사고가 있었다). 화면 캡처는 괜찮고, 넘패드 키 주입은 F24처럼 무해한 동작에만. 클릭·타이핑이 필요한 확인은 체크리스트로 사용자에게 맡긴다.
 

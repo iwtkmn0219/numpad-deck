@@ -114,7 +114,7 @@ function Cell({
     return (
       <div
         style={{ gridArea: slot.area }}
-        className={`${base} items-center justify-center ${lit ? "bg-white/25" : "bg-white/5"}`}
+        className={`${base} items-center justify-center ${lit ? "bg-white/5 ring-2 ring-white/70" : "bg-white/5"}`}
       >
         <span className="text-xs text-neutral-400">{t.system[slot.role]}</span>
       </div>
@@ -125,13 +125,13 @@ function Cell({
   const label = button?.label;
   // 마이크 음소거 버튼은 지금 상태를 보인다: 켜져 있으면 초록 불, 꺼져 있으면 마이크 꺼짐 아이콘
   const mic = button?.action.type === "micMute" ? payload.micMuted : null;
-  // 마이크 버튼은 누를 때 파란 강조 대신 바뀐 상태 색(켜짐 초록, 꺼짐 빨강)을 테두리와 함께 바로 보인다
+  // (실험: 모든 버튼을 흰 테두리로 강조) 마이크 버튼은 누를 때 바뀐 상태 색(켜짐 초록, 꺼짐 빨강)을 테두리와 함께 바로 보인다
   const tone = failed
     ? "bg-red-500 text-white"
     : lit && mic !== null
       ? `${mic ? "bg-red-600" : "bg-green-600"} text-white ring-2 ring-white/70`
       : lit
-        ? "bg-blue-500 text-white"
+        ? "bg-white/15 text-white ring-2 ring-white/70"
         : mic === false
           ? "bg-green-600 text-white"
           : label

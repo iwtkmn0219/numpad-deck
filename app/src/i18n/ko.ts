@@ -14,6 +14,7 @@ export const ko = {
     numlockOn: "켜짐",
     numlockOff: "꺼짐",
     numbersHint: "NumLock을 끄면 버튼을 쓸 수 있어요.",
+    update: (v: string) => `업데이트 ${v} 준비됨 · 트레이 메뉴에서 설치`,
   },
   onboarding: {
     step: (n: number, total: number) => `${n} / ${total}`,
@@ -99,6 +100,7 @@ export const ko = {
         check: "업데이트 확인",
         install: (v: string) => `${v} 설치`,
       },
+      banner: (v: string) => `새 버전 ${v}이 있어요.`,
       configTitle: "설정 파일",
       configBody: "버튼·페이지·배치가 모두 이 파일 하나에 저장돼요. 폴더째 복사해 두면 백업이 돼요.",
       openFile: "파일 열기",

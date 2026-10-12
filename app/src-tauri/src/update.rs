@@ -62,10 +62,12 @@ pub struct Updates {
 
 impl Updates {
     pub fn status(&self) -> Status {
-        if !RELEASE {
-            return Status::Unavailable;
-        }
-        self.status.lock().unwrap().clone().unwrap_or(Status::Idle)
+        let fallback = if RELEASE {
+            Status::Idle
+        } else {
+            Status::Unavailable
+        };
+        self.status.lock().unwrap().clone().unwrap_or(fallback)
     }
 
     pub fn state(&self, app: &AppHandle) -> State {
@@ -78,14 +80,60 @@ impl Updates {
 
 fn set_status(app: &AppHandle, status: Status) {
     *app.state::<Updates>().status.lock().unwrap() = Some(status.clone());
-    if let Some(tray) = app.state::<std::sync::Arc<Runtime>>().tray() {
+    let runtime = app.state::<std::sync::Arc<Runtime>>();
+    if let Some(tray) = runtime.tray() {
         tray.set_update(&status);
+    }
+    match &status {
+        Status::Available { version } => {
+            runtime.set_update_available(Some(version.clone()));
+            notify_once(app, &runtime, version);
+        }
+        Status::Latest => runtime.set_update_available(None),
+        _ => {}
     }
     let _ = app.emit_to(
         crate::editor::LABEL,
         UPDATE_CHANGED,
         app.state::<Updates>().state(app),
     );
+}
+
+/// 새 버전을 처음 찾았을 때 Windows 알림을 한 번 띄운다. 같은 버전은 다시 알리지 않는다
+/// (설정 폴더의 `update-notified`에 알린 버전을 적어 둔다 — 로그인할 때마다 알리지 않게).
+fn notify_once(app: &AppHandle, runtime: &Runtime, version: &str) {
+    use deck_core::i18n::tr;
+    use tauri_plugin_notification::NotificationExt;
+
+    let marker = runtime
+        .config_path()
+        .parent()
+        .map(|dir| dir.join("update-notified"));
+    if let Some(m) = &marker {
+        if std::fs::read_to_string(m).is_ok_and(|v| v.trim() == version) {
+            return;
+        }
+    }
+    let shown = app
+        .notification()
+        .builder()
+        .title(tr(
+            format!("Numpad Deck {version} 업데이트"),
+            format!("Numpad Deck {version} update"),
+        ))
+        .body(tr(
+            "새 버전이 있어요. 트레이 메뉴나 설정 창에서 설치할 수 있어요.",
+            "A new version is available. Install it from the tray menu or Settings.",
+        ))
+        .show();
+    match shown {
+        Ok(()) => {
+            if let Some(m) = &marker {
+                let _ = std::fs::write(m, version);
+            }
+        }
+        Err(e) => eprintln!("업데이트 알림을 띄울 수 없습니다: {e}"),
+    }
 }
 
 /// 새 버전이 있는지 확인한다. 확인 중이거나 설치 중이면 그대로 둔다.
@@ -152,6 +200,7 @@ pub fn on_menu(app: &AppHandle) {
 /// 일이라 비동기 작업자 대신 전용 스레드를 쓴다.
 pub fn start(app: &AppHandle) {
     if !RELEASE {
+        fake_for_dev(app);
         return;
     }
     let app = app.clone();
@@ -167,4 +216,17 @@ pub fn start(app: &AppHandle) {
     if let Err(e) = spawned {
         eprintln!("업데이트 확인 스레드를 만들 수 없습니다: {e}");
     }
+}
+
+/// 개발 빌드 시험용: `NPDK_FAKE_UPDATE=9.9.9 npm run tauri dev`면 5초 뒤 그 버전이 있는 것처럼
+/// 알린다 (알림·OSD 줄·편집기 띠 확인용, 설치는 되지 않는다).
+fn fake_for_dev(app: &AppHandle) {
+    let Ok(version) = std::env::var("NPDK_FAKE_UPDATE") else {
+        return;
+    };
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(5));
+        set_status(&app, Status::Available { version });
+    });
 }

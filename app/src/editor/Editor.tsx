@@ -103,7 +103,9 @@ function LanguageMenu({ config, update }: { config: Config; update: (recipe: (dr
   const value = config.language ?? "auto";
   const choose = (v: string) => chooseLanguage(v as LanguageChoice, update);
   return (
-    <DropdownMenu>
+    // modal을 끄면 메뉴가 열린 동안에도 버튼이 눌린다 (켜 두면 화면 전체가 눌리지 않아, 연달아
+    // 누를 때 두 번째 누름의 눌림 효과가 없었다)
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon-sm" title={t.label} className="active:translate-y-px">
           <Globe />

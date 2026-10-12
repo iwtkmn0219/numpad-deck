@@ -48,6 +48,7 @@ pub const MENU_PAUSE: &str = "pause";
 pub const MENU_STOP_SOUNDS: &str = "stop-sounds";
 pub const MENU_OPEN_CONFIG: &str = "open-config";
 pub const MENU_AUTOSTART: &str = "autostart";
+pub const MENU_UPDATE: &str = "update";
 pub const MENU_QUIT: &str = "quit";
 
 #[derive(Clone)]
@@ -62,6 +63,9 @@ pub struct Tray {
     open: MenuItem<Wry>,
     /// Windows 시작 시 실행 (체크)
     autostart: CheckMenuItem<Wry>,
+    /// 업데이트 확인/설치. 글자는 상태에 따라 바뀐다.
+    update: MenuItem<Wry>,
+    update_status: std::sync::Arc<std::sync::Mutex<crate::update::Status>>,
     quit: MenuItem<Wry>,
 }
 
@@ -89,6 +93,7 @@ impl Tray {
             autostart,
             None::<&str>,
         )?;
+        let update = MenuItem::with_id(app, MENU_UPDATE, "", crate::update::RELEASE, None::<&str>)?;
         let quit = MenuItem::with_id(app, MENU_QUIT, "", true, None::<&str>)?;
         let menu = Menu::with_items(
             app,
@@ -102,6 +107,7 @@ impl Tray {
                 &open,
                 &PredefinedMenuItem::separator(app)?,
                 &autostart,
+                &update,
                 &quit,
             ],
         )?;
@@ -137,6 +143,12 @@ impl Tray {
             stop_sounds,
             open,
             autostart,
+            update,
+            update_status: std::sync::Arc::new(std::sync::Mutex::new(if crate::update::RELEASE {
+                crate::update::Status::Idle
+            } else {
+                crate::update::Status::Unavailable
+            })),
             quit,
         };
         tray.update(view);
@@ -146,6 +158,33 @@ impl Tray {
     /// Windows 시작 시 실행 체크를 실제 상태에 맞춘다 (메뉴를 누르면 체크가 먼저 바뀌므로).
     pub fn set_autostart(&self, on: bool) {
         let _ = self.autostart.set_checked(on);
+    }
+
+    /// 업데이트 메뉴를 상태에 맞춘다.
+    pub fn set_update(&self, status: &crate::update::Status) {
+        *self.update_status.lock().unwrap() = status.clone();
+        self.render_update();
+    }
+
+    fn render_update(&self) {
+        use crate::update::Status;
+        let status = self.update_status.lock().unwrap().clone();
+        let text = match &status {
+            Status::Idle | Status::Failed { .. } | Status::Unavailable => {
+                tr("업데이트 확인", "Check for updates")
+            }
+            Status::Checking => tr("업데이트 확인 중…", "Checking for updates…"),
+            Status::Latest => tr("최신 버전이에요", "You're up to date"),
+            Status::Available { version } => tr(
+                format!("업데이트 설치 ({version})"),
+                format!("Install update ({version})"),
+            ),
+            Status::Installing => tr("업데이트 설치 중…", "Installing update…"),
+        };
+        let enabled =
+            crate::update::RELEASE && !matches!(status, Status::Checking | Status::Installing);
+        let _ = self.update.set_text(text);
+        let _ = self.update.set_enabled(enabled);
     }
 
     /// 아이콘·툴팁·메뉴를 상태에 맞춘다. 어느 스레드에서 불러도 된다.
@@ -164,6 +203,7 @@ impl Tray {
         let _ = self
             .autostart
             .set_text(tr("Windows 시작 시 실행", "Start with Windows"));
+        self.render_update();
         let _ = self.quit.set_text(tr("종료", "Quit"));
         let status = format!("{mode} · {}", view.page);
         let _ = self.icon.set_icon(Some(icon(view.mode)));

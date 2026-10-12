@@ -7,6 +7,7 @@ mod editor;
 mod osd;
 mod runtime;
 mod tray;
+mod update;
 
 use std::sync::Arc;
 
@@ -21,6 +22,7 @@ use osd::Osd;
 use runtime::Runtime;
 use tray::{
     Tray, MENU_AUTOSTART, MENU_EDITOR, MENU_OPEN_CONFIG, MENU_PAUSE, MENU_QUIT, MENU_STOP_SOUNDS,
+    MENU_UPDATE,
 };
 
 #[tauri::command]
@@ -226,6 +228,24 @@ fn set_autostart(app: AppHandle, runtime: State<'_, Arc<Runtime>>, on: bool) -> 
     }
 }
 
+/// 설정 창: 지금 버전과 업데이트 상태.
+#[tauri::command]
+fn get_update(app: AppHandle) -> update::State {
+    app.state::<update::Updates>().state(&app)
+}
+
+/// 설정 창: 지금 확인.
+#[tauri::command]
+async fn check_update(app: AppHandle) -> update::State {
+    update::check(&app).await
+}
+
+/// 설정 창: 받아 둔 업데이트 설치 (성공하면 앱이 끝나고 새 버전으로 다시 켜진다).
+#[tauri::command]
+async fn install_update(app: AppHandle) -> update::State {
+    update::install(&app).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -241,6 +261,8 @@ pub fn run() {
                 .args([AUTOSTART_ARG])
                 .build(),
         )
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(update::Updates::default())
         .invoke_handler(tauri::generate_handler![
             get_config,
             save_config,
@@ -258,6 +280,9 @@ pub fn run() {
             open_config_folder,
             get_autostart,
             set_autostart,
+            get_update,
+            check_update,
+            install_update,
             system_lang,
             onboarding_pending,
             finish_onboarding
@@ -282,6 +307,7 @@ pub fn run() {
             app.manage(runtime);
             // 첫 실행(온보딩)이거나 사용자가 직접 실행했으면 편집기를 연다. 로그인 때 자동
             // 실행이면 조용히 트레이에만 둔다. 직접 실행했는데 창이 안 뜨면 켜졌는지 알 수 없다.
+            update::start(app.handle());
             let autostarted = std::env::args().any(|a| a == AUTOSTART_ARG);
             if first_run || !autostarted {
                 editor::open(app.handle());
@@ -295,6 +321,7 @@ pub fn run() {
                 MENU_PAUSE => runtime.toggle_pause(),
                 MENU_STOP_SOUNDS => runtime.stop_sounds(),
                 MENU_OPEN_CONFIG => runtime.open_config(),
+                MENU_UPDATE => update::on_menu(app),
                 MENU_AUTOSTART => {
                     set_autostart_state(app, &runtime, !autostart_enabled(app));
                 }

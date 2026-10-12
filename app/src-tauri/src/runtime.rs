@@ -307,6 +307,10 @@ impl Runtime {
         );
     }
 
+    pub fn tray(&self) -> Option<Tray> {
+        self.ui.lock().unwrap().tray.clone()
+    }
+
     /// 트레이 Windows 시작 시 실행 체크를 실제 상태에 맞춘다.
     pub fn set_autostart_checked(&self, on: bool) {
         let tray = self.ui.lock().unwrap().tray.clone();

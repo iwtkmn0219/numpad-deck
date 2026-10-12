@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Check, CircleAlert, Keyboard, Pin } from "lucide-react";
+import { Check, CircleAlert, Keyboard, LayoutGrid, Pin } from "lucide-react";
 import type { Config } from "@/bindings/Config";
 import type { Preset } from "@/bindings/Preset";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,9 @@ import { cn } from "@/lib/utils";
 import { buttonIcon, Icon } from "@/shared/icons";
 import { DEFAULT_SYSTEM_KEYS } from "@/shared/layout";
 import { numpadLabel } from "./keymap";
-import { listPresets } from "./PresetDialog";
+import { chooseLanguage, type LanguageChoice } from "./language";
+import { LayoutEditor } from "./LayoutEditor";
+import { listPresets, MiniGrid } from "./PresetDialog";
 
 type Mode = "deck" | "numbers" | "paused";
 
@@ -20,8 +22,12 @@ interface Props {
   onClose: () => void;
 }
 
+/** 단계 수 */
+const STEPS = 5;
+
 /**
- * 첫 실행 안내 3단계: ① NumLock 끄기 ② 넘패드 1 눌러 보기(음악·영상 프리셋의 YouTube — 눈에 보이는 결과) ③ 프리셋 고르기 + 트레이 아이콘 고정.
+ * 첫 실행 안내: ⓪ 언어 ① NumLock 끄기 ② 넘패드 1 눌러 보기(음악·영상 프리셋의 YouTube — 눈에 보이는
+ * 결과) ③ 화면 속 넘패드 배치를 내 키보드에 맞추기 ④ 프리셋 고르기 + 트레이 아이콘 고정.
  * 편집기 창이 앞이면 키가 저수준 훅을 거치지 않으므로, NumLock·넘패드 키는 이 화면이 받은
  * 키로 판단한다 (덱 버튼 실행은 편집기의 `installDeckKeyForwarding`이 맡는다).
  */
@@ -53,10 +59,10 @@ export function Onboarding({ config, update, onClose }: Props) {
       <div className="flex w-full max-w-2xl flex-col gap-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
-            {[0, 1, 2].map((i) => (
+            {Array.from({ length: STEPS }, (_, i) => (
               <span key={i} className={cn("h-1.5 w-8 rounded-full", i <= step ? "bg-blue-500" : "bg-muted")} />
             ))}
-            <span className="ml-2 text-xs text-muted-foreground">{t.step(step + 1)}</span>
+            <span className="ml-2 text-xs text-muted-foreground">{t.step(step + 1, STEPS)}</span>
           </div>
           <Button variant="ghost" size="sm" onClick={close}>
             {t.skip}
@@ -66,9 +72,13 @@ export function Onboarding({ config, update, onClose }: Props) {
         {checking ? (
           <KeyCheck onClose={() => setChecking(false)} />
         ) : step === 0 ? (
-          <NumLockStep mode={mode} />
+          <LanguageStep config={config} update={update} />
         ) : step === 1 ? (
+          <NumLockStep mode={mode} />
+        ) : step === 2 ? (
           <PressStep config={config} onNoResponse={() => setChecking(true)} />
+        ) : step === 3 ? (
+          <LayoutStep config={config} update={update} />
         ) : (
           <PresetStep config={config} chosen={chosen} setChosen={setChosen} />
         )}
@@ -78,7 +88,7 @@ export function Onboarding({ config, update, onClose }: Props) {
             <Button variant="outline" onClick={() => setStep(step - 1)} className={cn(step === 0 && "invisible")}>
               {t.back}
             </Button>
-            {step < 2 ? (
+            {step < STEPS - 1 ? (
               <Button onClick={() => setStep(step + 1)}>{t.next}</Button>
             ) : (
               <Button onClick={() => void listPresets(lang).then(finish)}>{t.finish}</Button>
@@ -112,6 +122,60 @@ function useMode(): Mode | null {
     };
   }, []);
   return mode;
+}
+
+/** ⓪ 언어. 고르면 바로 화면이 그 언어로 바뀐다. */
+function LanguageStep({ config, update }: { config: Config; update: (recipe: (draft: Config) => void) => void }) {
+  const t = useT();
+  const value: LanguageChoice = config.language ?? "auto";
+  const options: [LanguageChoice, string][] = [
+    ["auto", t.editor.language.auto],
+    ["ko", "한국어"],
+    ["en", "English"],
+  ];
+  return (
+    <div className="space-y-5">
+      <StepTitle title={t.onboarding.language.title} body={t.onboarding.language.body} />
+      <div className="grid gap-2">
+        {options.map(([v, label]) => (
+          <button
+            key={v}
+            onClick={() => void chooseLanguage(v, update)}
+            className={cn(
+              "flex items-center justify-between rounded-xl border p-4 text-left font-medium",
+              value === v ? "border-blue-500 bg-blue-500/5" : "hover:bg-muted",
+            )}
+          >
+            {label}
+            {value === v && <Check className="size-5 text-blue-600" />}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** ③ 화면 속 넘패드를 내 키보드 모양에 맞추기 (배치 창을 연다). */
+function LayoutStep({ config, update }: { config: Config; update: (recipe: (draft: Config) => void) => void }) {
+  const t = useT().onboarding.layout;
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="space-y-5">
+      <StepTitle title={t.title} body={t.body} />
+      <div className="flex items-start gap-5 rounded-xl border bg-card p-5">
+        <div className="w-60 shrink-0">
+          <MiniGrid page={config.pages[0]} layout={config.layout} systemKeys={config.systemKeys} />
+        </div>
+        <div className="space-y-3">
+          <Button onClick={() => setOpen(true)}>
+            <LayoutGrid /> {t.open}
+          </Button>
+          <p className="text-sm text-muted-foreground">{t.later}</p>
+        </div>
+      </div>
+      <LayoutEditor open={open} onOpenChange={setOpen} config={config} update={update} />
+    </div>
+  );
 }
 
 function StepTitle({ title, body }: { title: string; body: string }) {

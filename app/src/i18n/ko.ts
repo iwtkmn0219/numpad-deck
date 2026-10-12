@@ -16,7 +16,17 @@ export const ko = {
     numbersHint: "NumLock을 끄면 버튼을 쓸 수 있어요.",
   },
   onboarding: {
-    step: (n: number) => `${n} / 3`,
+    step: (n: number, total: number) => `${n} / ${total}`,
+    language: {
+      title: "언어 / Language",
+      body: "화면에 쓸 언어를 고르세요. 나중에 편집기 위쪽 🌐 메뉴에서 바꿀 수 있어요.",
+    },
+    layout: {
+      title: "화면 속 넘패드를 내 키보드에 맞추기",
+      body: "노트북처럼 넘패드 모양이 다른 키보드라면, 화면에 보이는 키 배치를 실제 키보드처럼 맞출 수 있어요. 페이지를 넘기는 키도 손에 편한 키로 바꿀 수 있어요.",
+      open: "지금 맞추기",
+      later: "모양이 같거나 나중에 하려면 다음을 누르세요. 편집기 위쪽 배치 버튼으로 언제든 바꿀 수 있어요.",
+    },
     skip: "건너뛰기",
     back: "이전",
     next: "다음",

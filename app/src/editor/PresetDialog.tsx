@@ -84,8 +84,8 @@ export function PresetDialog({ open, onOpenChange, onAdd, layout, systemKeys }: 
   );
 }
 
-/** 프리셋 미리보기용 작은 넘패드 */
-function MiniGrid({ page, layout, systemKeys }: { page: Page; layout?: KeyPlace[]; systemKeys?: SystemKeys }) {
+/** 작은 넘패드 미리보기 (프리셋, 온보딩의 배치 맞추기) */
+export function MiniGrid({ page, layout, systemKeys }: { page: Page; layout?: KeyPlace[]; systemKeys?: SystemKeys }) {
   const t = useT();
   const grid = gridFor(layout, systemKeys);
   return (

@@ -17,7 +17,17 @@ export const en: Dict = {
     numbersHint: "Turn NumLock off to use the buttons.",
   },
   onboarding: {
-    step: (n: number) => `${n} / 3`,
+    step: (n: number, total: number) => `${n} / ${total}`,
+    language: {
+      title: "언어 / Language",
+      body: "Choose the language for the app. You can change it later from the 🌐 menu at the top of the editor.",
+    },
+    layout: {
+      title: "Match the on-screen numpad to your keyboard",
+      body: "If your numpad has a different shape (on a laptop, for example), you can arrange the on-screen keys like your real keyboard. You can also move the page-switching keys to keys that are easier to reach.",
+      open: "Arrange now",
+      later: "If the shape already matches, or to do it later, click Next. You can change it anytime with the layout button at the top of the editor.",
+    },
     skip: "Skip",
     back: "Back",
     next: "Next",

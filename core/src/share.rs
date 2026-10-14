@@ -546,6 +546,19 @@ pub struct Preview {
     pub any_caution: bool,
 }
 
+/// `ms-settings:`, `mailto:`, `https://` 같은 주소인가 (앞 글자 2자 이상이면 `C:\` 같은 드라이브가 아님).
+/// 셸이 알아서 여는 대상이라 이 PC에 있는지 판정하지 않는다.
+fn has_uri_scheme(t: &str) -> bool {
+    let Some((scheme, _)) = t.split_once(':') else {
+        return false;
+    };
+    scheme.len() >= 2
+        && scheme.starts_with(|c: char| c.is_ascii_alphabetic())
+        && scheme
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '.' | '-'))
+}
+
 /// 동작 하나의 (주의, 없음). 묶음은 단계 중 하나라도 해당하면 해당한다.
 fn action_flags(a: &Action, bundle: &Bundle, probe: &impl Probe) -> (bool, bool) {
     match a {
@@ -553,13 +566,14 @@ fn action_flags(a: &Action, bundle: &Bundle, probe: &impl Probe) -> (bool, bool)
             let missing = if target.to_lowercase().starts_with("shell:appsfolder") {
                 !probe.app_installed(target)
             } else {
-                !probe.file_exists(&expand_env(target))
+                let p = expand_env(target);
+                // 주소나 경로 없는 이름(`notepad.exe`)은 셸이 찾으므로 판정하지 않는다.
+                !(has_uri_scheme(target) || !p.contains(['\\', '/']) || probe.file_exists(&p))
             };
             (true, missing)
         }
         Action::Open { target } => {
-            let missing = if target.contains("://") || target.to_lowercase().starts_with("mailto:")
-            {
+            let missing = if has_uri_scheme(target) {
                 false
             } else {
                 let p = expand_env(target);
@@ -754,21 +768,56 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
     (y, m, d)
 }
 
-/// `YYYYMMDD-HHMMSS` (UTC). chrono를 쓰지 않으려고 직접 계산한다: 파일 이름은 정렬용이라
-/// 현지 시각이 아니어도 된다.
+/// UTC 초 -> (년, 월, 일, 시, 분, 초).
+fn utc_parts(secs: i64) -> (i64, u32, u32, u32, u32, u32) {
+    let (y, mo, d) = civil_from_days(secs.div_euclid(86_400));
+    let t = secs.rem_euclid(86_400) as u32;
+    (y, mo, d, t / 3600, t % 3600 / 60, t % 60)
+}
+
+/// UTC 초를 현지 시각 부품으로 바꾼다. 변환이 안 되면 UTC 그대로.
+fn local_parts(secs: i64) -> (i64, u32, u32, u32, u32, u32) {
+    use windows::Win32::Foundation::SYSTEMTIME;
+    use windows::Win32::System::Time::SystemTimeToTzSpecificLocalTime;
+    let utc = utc_parts(secs);
+    let st = SYSTEMTIME {
+        wYear: utc.0 as u16,
+        wMonth: utc.1 as u16,
+        wDay: utc.2 as u16,
+        wHour: utc.3 as u16,
+        wMinute: utc.4 as u16,
+        wSecond: utc.5 as u16,
+        ..Default::default()
+    };
+    let mut local = SYSTEMTIME::default();
+    // SAFETY: 두 SYSTEMTIME은 이 함수 안의 값이고, 시간대는 현재 설정(None)을 쓴다.
+    if unsafe { SystemTimeToTzSpecificLocalTime(None, &st, &mut local) }.is_err() {
+        return utc;
+    }
+    (
+        local.wYear as i64,
+        local.wMonth as u32,
+        local.wDay as u32,
+        local.wHour as u32,
+        local.wMinute as u32,
+        local.wSecond as u32,
+    )
+}
+
+fn format_stamp(p: (i64, u32, u32, u32, u32, u32)) -> String {
+    format!(
+        "{:04}{:02}{:02}-{:02}{:02}{:02}",
+        p.0, p.1, p.2, p.3, p.4, p.5
+    )
+}
+
+/// `YYYYMMDD-HHMMSS` (현지 시각). 날짜 계산은 직접 하고(chrono 없음) 현지 변환만 Windows에 맡긴다.
 fn stamp(now: SystemTime) -> String {
     let secs = match now.duration_since(SystemTime::UNIX_EPOCH) {
         Ok(d) => d.as_secs() as i64,
         Err(e) => -(e.duration().as_secs() as i64),
     };
-    let (y, mo, d) = civil_from_days(secs.div_euclid(86_400));
-    let t = secs.rem_euclid(86_400);
-    format!(
-        "{y:04}{mo:02}{d:02}-{:02}{:02}{:02}",
-        t / 3600,
-        t % 3600 / 60,
-        t % 60
-    )
+    format_stamp(local_parts(secs))
 }
 
 /// `config-<시각>[-<번호>].json` → (시각, 번호) 정렬 키. 형식이 다르면 None.
@@ -806,7 +855,9 @@ pub fn backup_config(config_path: &Path, now: SystemTime) -> Result<PathBuf, Sha
         })
         .collect();
     all.sort();
-    let extra = all.len().saturating_sub(KEEP_BACKUPS);
+    // 방금 만든 것은 시계가 어긋나 있어도 지우지 않는다.
+    all.retain(|(_, p)| *p != dest);
+    let extra = all.len().saturating_sub(KEEP_BACKUPS - 1);
     for (_, old) in all.into_iter().take(extra) {
         let _ = std::fs::remove_file(old);
     }
@@ -1462,6 +1513,60 @@ mod tests {
     }
 
     #[test]
+    fn preview_does_not_judge_uris_and_bare_names() {
+        let page = page_with(
+            "p",
+            &[
+                ("7", r#"{"type":"open","target":"ms-settings:apps-volume"}"#),
+                ("8", r#"{"type":"open","target":"steam://run/1"}"#),
+                ("9", r#"{"type":"launch","target":"notepad.exe"}"#),
+                ("4", r#"{"type":"launch","target":"steam://run/1"}"#),
+                ("5", r#"{"type":"open","target":"D:\\nope"}"#),
+                ("6", r#"{"type":"launch","target":"D:\\nope.exe"}"#),
+            ],
+        );
+        let b = bundle_of(Kind::Pages, &[page], &[]);
+        let mut m: Vec<(String, bool)> = notes_of(&b, &FakeProbe::default())
+            .iter()
+            .map(|n| (n.key.clone(), n.missing))
+            .collect();
+        m.sort();
+        let want = [
+            ("4", false),
+            ("5", true),
+            ("6", true),
+            ("7", false),
+            ("8", false),
+            ("9", false),
+        ];
+        let want: Vec<(String, bool)> = want.iter().map(|(k, v)| (k.to_string(), *v)).collect();
+        assert_eq!(m, want);
+    }
+
+    #[test]
+    fn default_preset_flags_only_real_paths() {
+        for lang in [Lang::Ko, Lang::En] {
+            let cfg = crate::presets::default_config(lang);
+            let mut b = bundle_of(Kind::Pages, &[], &[]);
+            b.manifest.pages = cfg.pages;
+            let missing_of = |probe: &FakeProbe| -> Vec<String> {
+                preview(&b, 1, probe)
+                    .pages
+                    .iter()
+                    .flat_map(|p| p.notes.iter())
+                    .filter(|n| n.missing)
+                    .map(|n| n.key.clone())
+                    .collect()
+            };
+            // 주소(https, ms-settings)는 판정 제외. 음악 폴더 버튼만 경로라 판정한다.
+            assert_eq!(missing_of(&FakeProbe::default()), ["2"]);
+            let mut probe = FakeProbe::default();
+            probe.dirs.insert(expand_env(r"%USERPROFILE%\Music"));
+            assert!(missing_of(&probe).is_empty());
+        }
+    }
+
+    #[test]
     fn preview_sequence_missing_if_any_step_missing() {
         let page = page_with(
             "p",
@@ -1628,10 +1733,9 @@ mod tests {
             first.get_or_insert(p);
         }
         let first = first.unwrap();
-        assert_eq!(
-            first.file_name().unwrap().to_string_lossy(),
-            "config-19710101-000000.json"
-        );
+        // 현지 시각이라 값은 시간대에 따라 다르다: 형식만 본다
+        let fname = first.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(backup_sort_key(&fname).is_some(), "{fname}");
         assert!(!first.exists());
         let n = std::fs::read_dir(dir.path().join("backups"))
             .unwrap()
@@ -1651,10 +1755,34 @@ mod tests {
         assert_ne!(a, b);
         assert_eq!(std::fs::read(&a).unwrap(), b"one");
         assert_eq!(std::fs::read(&b).unwrap(), b"two");
-        // 2001-09-09 01:46:40 UTC
         assert_eq!(
-            a.file_name().unwrap().to_string_lossy(),
-            "config-20010909-014640.json"
+            a.file_name().unwrap().to_string_lossy().len(),
+            "config-20010909-014640.json".len()
         );
+    }
+
+    #[test]
+    fn utc_parts_known_instants() {
+        // 2001-09-09 01:46:40 UTC, 1971-01-01, 윤일 2024-02-29 12:00:00
+        assert_eq!(format_stamp(utc_parts(1_000_000_000)), "20010909-014640");
+        assert_eq!(format_stamp(utc_parts(86_400 * 365)), "19710101-000000");
+        assert_eq!(format_stamp(utc_parts(1_709_208_000)), "20240229-120000");
+    }
+
+    #[test]
+    fn backup_never_deletes_the_new_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = dir.path().join("config.json");
+        std::fs::write(&cfg, b"{}").unwrap();
+        let bdir = dir.path().join("backups");
+        std::fs::create_dir_all(&bdir).unwrap();
+        // 미래 시각 이름 10개 (시계가 되감긴 경우)
+        for i in 0..10 {
+            std::fs::write(bdir.join(format!("config-29990101-00000{i}.json")), b"x").unwrap();
+        }
+        let t = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
+        let p = backup_config(&cfg, t).unwrap();
+        assert!(p.exists());
+        assert_eq!(std::fs::read_dir(&bdir).unwrap().count(), 10);
     }
 }

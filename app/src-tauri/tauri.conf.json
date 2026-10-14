@@ -30,7 +30,10 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "fileAssociations": [
+      { "ext": ["npdeck"], "name": "Numpad Deck", "description": "Numpad Deck page", "role": "Viewer" }
+    ]
   },
   "plugins": {
     "updater": {

@@ -7,6 +7,7 @@ mod editor;
 mod mic_badge;
 mod osd;
 mod runtime;
+mod share;
 mod theme;
 mod tray;
 mod update;
@@ -17,7 +18,7 @@ use deck_core::action::apps::AppEntry;
 use deck_core::config::{Action, Config};
 use deck_core::key::{NumpadKey, RawKey};
 use deck_core::presets::{self, Lang, Preset};
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_autostart::ManagerExt;
 
 use osd::Osd;
@@ -253,8 +254,15 @@ pub fn run() {
     tauri::Builder::default()
         // 훅이 두 개 걸리면 버튼이 두 번 실행되므로 하나만 띄운다. 두 번째 실행은
         // 이미 떠 있는 앱의 편집기를 연다.
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            editor::open(app);
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // 공유 파일을 더블클릭해 다시 실행했으면 파일을 넘기고 편집기에 알린다
+            if let Some(path) = share::share_arg(args.iter().skip(1)) {
+                app.state::<share::ShareState>().set_request(path);
+                editor::open(app);
+                let _ = app.emit_to(editor::LABEL, "share://open", ());
+            } else {
+                editor::open(app);
+            }
         }))
         .plugin(tauri_plugin_dialog::init())
         // 로그인 때 자동 실행이면 이 인자가 붙는다 (그때만 창 없이 트레이에서 시작)
@@ -266,6 +274,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .manage(update::Updates::default())
+        .manage(share::ShareState::default())
         .invoke_handler(tauri::generate_handler![
             get_config,
             save_config,
@@ -288,7 +297,12 @@ pub fn run() {
             install_update,
             system_lang,
             onboarding_pending,
-            finish_onboarding
+            finish_onboarding,
+            share::export_check,
+            share::export_share,
+            share::open_share,
+            share::install_share,
+            share::take_share_request
         ])
         .setup(|app| {
             let runtime = Arc::new(Runtime::start()?);
@@ -324,7 +338,12 @@ pub fn run() {
                 });
             }
             let autostarted = std::env::args().any(|a| a == AUTOSTART_ARG);
-            if first_run || !autostarted {
+            // 더블클릭으로 열린 공유 파일: 자동 실행 인자와 함께여도 편집기를 연다
+            let share_file = share::share_arg(std::env::args().skip(1));
+            if let Some(path) = &share_file {
+                app.state::<share::ShareState>().set_request(path.clone());
+            }
+            if first_run || !autostarted || share_file.is_some() {
                 editor::open(app.handle());
             }
             Ok(())

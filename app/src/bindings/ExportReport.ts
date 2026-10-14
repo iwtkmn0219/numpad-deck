@@ -15,4 +15,8 @@ missingSounds: Array<string>,
 /**
  * 5 MiB를 넘는 효과음
  */
-tooBigSounds: Array<string>, };
+tooBigSounds: Array<string>, 
+/**
+ * 담을 효과음 합계가 20 MiB를 넘음
+ */
+soundsTotalTooBig: boolean, };

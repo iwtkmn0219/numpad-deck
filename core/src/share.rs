@@ -148,6 +148,8 @@ pub enum ShareError {
     /// 더 새로운 앱이 만든 파일 (형식 번호)
     TooNew(u32),
     TooBig,
+    /// 내보낼 효과음의 합계가 한도를 넘음
+    SoundsTooBig,
     /// 너무 큰 효과음 (파일 이름)
     SoundTooBig(String),
     /// 버튼 설정이 맞지 않음 (메시지)
@@ -158,6 +160,7 @@ pub enum ShareError {
 impl fmt::Display for ShareError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mb = MAX_SOUND / 1024 / 1024;
+        let total = MAX_SOUNDS_TOTAL / 1024 / 1024;
         let s = match self {
             ShareError::NotDeckFile => tr(
                 "Numpad Deck 파일이 아니에요.",
@@ -174,6 +177,10 @@ impl fmt::Display for ShareError {
             ShareError::TooBig => tr(
                 "파일이 너무 커서 열 수 없어요.",
                 "The file is too big to open.",
+            ),
+            ShareError::SoundsTooBig => tr(
+                format!("효과음을 모두 합쳐 {total}MB까지만 담을 수 있어요."),
+                format!("Sounds can add up to {total} MB at most."),
             ),
             ShareError::SoundTooBig(name) => tr(
                 format!("효과음 ‘{name}’이 너무 커서 담을 수 없어요({mb}MB까지)."),
@@ -205,6 +212,8 @@ pub struct ExportReport {
     pub missing_sounds: Vec<String>,
     /// 5 MiB를 넘는 효과음
     pub too_big_sounds: Vec<String>,
+    /// 담을 효과음 합계가 20 MiB를 넘음
+    pub sounds_total_too_big: bool,
 }
 
 /// 읽어 낸 묶음. 소리 키 = `sounds/<해시>.<확장자>`.
@@ -276,6 +285,8 @@ fn probe_sound(file: &str) -> SoundFile {
 /// 디스크를 읽기만 한다 (소리 파일 크기·존재).
 pub fn export_check(config: &Config, sel: &Selection) -> ExportReport {
     let mut r = ExportReport::default();
+    let mut seen: Vec<PathBuf> = Vec::new();
+    let mut total = 0u64;
     for page in selected_pages(config, sel) {
         for_each_action(&page, &mut |a| match a {
             Action::Text { .. } => r.text_buttons += 1,
@@ -283,16 +294,22 @@ pub fn export_check(config: &Config, sel: &Selection) -> ExportReport {
                 SoundFile::Missing if !r.missing_sounds.contains(file) => {
                     r.missing_sounds.push(file.clone())
                 }
-                SoundFile::Found { size, .. }
-                    if size > MAX_SOUND && !r.too_big_sounds.contains(file) =>
-                {
-                    r.too_big_sounds.push(file.clone())
+                SoundFile::Found { size, .. } if size > MAX_SOUND => {
+                    if !r.too_big_sounds.contains(file) {
+                        r.too_big_sounds.push(file.clone())
+                    }
+                }
+                // 합계는 같은 파일을 한 번만 센다 (내용이 같은 다른 파일은 세지 못해 넉넉히 센다)
+                SoundFile::Found { path, size, .. } if !seen.contains(&path) => {
+                    total += size;
+                    seen.push(path);
                 }
                 _ => {}
             },
             _ => {}
         });
     }
+    r.sounds_total_too_big = total > MAX_SOUNDS_TOTAL;
     r
 }
 
@@ -349,7 +366,7 @@ pub fn export(
                         if !sounds.contains_key(&entry) {
                             total += bytes.len() as u64;
                             if total > MAX_SOUNDS_TOTAL {
-                                error = Some(ShareError::TooBig);
+                                error = Some(ShareError::SoundsTooBig);
                                 return;
                             }
                             sounds.insert(entry.clone(), bytes);
@@ -801,6 +818,29 @@ mod tests {
         assert_eq!(r.text_buttons, 2);
         assert_eq!(r.missing_sounds, [missing]);
         assert_eq!(r.too_big_sounds, [big]);
+        assert!(!r.sounds_total_too_big);
+    }
+
+    #[test]
+    fn export_total_over_limit_is_flagged_and_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        // 서로 다른 4.5 MiB 소리 5개 = 22.5 MiB
+        let pages: Vec<String> = (0..5u8)
+            .map(|i| {
+                let f = write_file(
+                    dir.path(),
+                    &format!("s{i}.wav"),
+                    &vec![i; MAX_SOUND as usize - 512 * 1024],
+                );
+                page_json(&format!("P{i}"), &f)
+            })
+            .collect();
+        let cfg = config_of(&pages, "");
+        assert!(export_check(&cfg, &Selection::All).sounds_total_too_big);
+        assert!(!export_check(&cfg, &Selection::Pages(vec![0, 1])).sounds_total_too_big);
+        let r = export_to(&cfg, &Selection::All, dir.path());
+        assert!(matches!(r, Err(ShareError::SoundsTooBig)), "{r:?}");
+        assert!(!r.unwrap_err().to_string().contains("열 수"));
     }
 
     #[test]

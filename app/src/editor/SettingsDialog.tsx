@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Download, FileJson, FolderOpen, RefreshCw } from "lucide-react";
+import { Download, FileDown, FileJson, FileUp, FolderOpen, RefreshCw } from "lucide-react";
 import type { Action } from "@/bindings/Action";
 import type { Config } from "@/bindings/Config";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,10 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   config: Config;
   update: (recipe: (draft: Config) => void) => void;
+  /** 설정 전체를 파일로 */
+  onExportAll: () => void;
+  /** 백업 파일 골라 가져오기 */
+  onImportBackup: () => void;
 }
 
 /** 어느 페이지에든(묶음 안 포함) 마이크 끄기 버튼이 있는가. 코어 `Config::uses_mic_mute`와 같은 규칙. */
@@ -78,8 +82,9 @@ export function UpdateBanner() {
 }
 
 /** 앱 설정: Windows 시작 시 실행, 설정 파일, 앱 정보. 버튼·페이지 편집과 상관없는 것만 둔다. */
-export function SettingsDialog({ open, onOpenChange, config, update: updateConfig }: Props) {
+export function SettingsDialog({ open, onOpenChange, config, update: updateConfig, onExportAll, onImportBackup }: Props) {
   const t = useT().editor.settings;
+  const ts = useT().editor.share;
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [autostart, setAutostart] = useState<Autostart | null>(null);
   const [update, setUpdate] = useUpdate();
@@ -174,6 +179,19 @@ export function SettingsDialog({ open, onOpenChange, config, update: updateConfi
             )}
           </section>
         )}
+
+        <section className="space-y-2 border-t pt-4">
+          <h3 className="font-medium">{ts.backupTitle}</h3>
+          <p className="text-muted-foreground">{ts.backupBody}</p>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={onExportAll}>
+              <FileDown /> {ts.exportAll}
+            </Button>
+            <Button variant="outline" size="sm" onClick={onImportBackup}>
+              <FileUp /> {ts.importBackup}
+            </Button>
+          </div>
+        </section>
 
         <section className="space-y-2 border-t pt-4">
           <h3 className="font-medium">{t.configTitle}</h3>

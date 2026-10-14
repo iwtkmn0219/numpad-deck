@@ -1,7 +1,18 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { CircleHelp, Globe, LayoutGrid, Redo2, Settings, Undo2 } from "lucide-react";
+import { CircleHelp, Globe, LayoutGrid, Redo2, Settings, ShieldCheck, Undo2, X } from "lucide-react";
 import type { Config } from "@/bindings/Config";
+import type { InstallMode } from "@/bindings/InstallMode";
+import type { Preview } from "@/bindings/Preview";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -13,7 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
-import { installDeckKeyForwarding } from "./api";
+import { getConfig, installDeckKeyForwarding, onShareOpen, openShare, pickShareOpen, takeShareRequest } from "./api";
 import { ButtonPanel } from "./ButtonPanel";
 import { gridFor } from "@/shared/layout";
 import { KeyGrid, type Selection } from "./KeyGrid";
@@ -24,10 +35,12 @@ import { Onboarding } from "./Onboarding";
 import { chooseLanguage, type LanguageChoice } from "./language";
 import { PageTabs } from "./PageTabs";
 import { useEditorConfig, type SaveStatus } from "./useEditorConfig";
+import { useExport } from "./share/ExportFlow";
+import { ImportDialog } from "./share/ImportDialog";
 
 export function Editor() {
   const t = useT().editor;
-  const { config, status, update, undo, redo, canUndo, canRedo } = useEditorConfig();
+  const { config, status, update, adopt, undo, redo, canUndo, canRedo } = useEditorConfig();
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Selection | null>({ kind: "button", key: "7" });
 
@@ -39,9 +52,62 @@ export function Editor() {
   useEffect(() => installDeckKeyForwarding(), []);
 
   // 첫 실행이면 온보딩부터
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
   useEffect(() => {
-    void invoke<boolean>("onboarding_pending").then(setOnboarding);
+    void invoke<boolean>("onboarding_pending").then((pending) => {
+      setOnboarding(pending);
+      setOnboardingChecked(true);
+    });
   }, []);
+
+  // 공유 파일: 내보내기 흐름, 가져오기 창
+  const exporter = useExport(config);
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
+  /** "바꾸기" 뒤 자동 백업 경로 안내 */
+  const [replacedBackup, setReplacedBackup] = useState<string | null>(null);
+  /** 받은 미리 보기 중 가장 새 id. 코어는 나중에 끝난 열기의 묶음을 들고 있다(id가 가장 큼). */
+  const latestPreview = useRef(0);
+
+  const openShareFile = useCallback(async (path: string) => {
+    try {
+      const p = await openShare(path);
+      if (p.id < latestPreview.current) return;
+      latestPreview.current = p.id;
+      setPreview(p);
+    } catch (e) {
+      setOpenError(String(e));
+    }
+  }, []);
+
+  const pickAndImport = async () => {
+    const path = await pickShareOpen();
+    if (path) await openShareFile(path);
+  };
+
+  // 더블클릭한 파일: 시작할 때와 `share://open`을 받을 때 꺼낸다. 온보딩 중이면 끝난 뒤에.
+  const [shareSignal, setShareSignal] = useState(0);
+  useEffect(() => {
+    const unlisten = onShareOpen(() => setShareSignal((n) => n + 1));
+    return () => void unlisten.then((f) => f());
+  }, []);
+  useEffect(() => {
+    if (!onboardingChecked || onboarding) return;
+    void takeShareRequest().then((path) => {
+      if (path) void openShareFile(path);
+    });
+  }, [onboardingChecked, onboarding, shareSignal, openShareFile]);
+
+  const onInstalled = async (mode: InstallMode, count: number, backup: string | null) => {
+    setPreview(null);
+    setReplacedBackup(backup);
+    // 파일 감시를 기다리지 않고 바로 받는다 (바꾸기는 되돌리기 기록을 비운다).
+    // 못 받으면 파일 감시가 보내 준다.
+    const next = await getConfig().catch(() => null);
+    if (!next) return;
+    adopt(next, mode === "replace");
+    setPage(mode === "add" ? Math.max(0, next.pages.length - count) : 0);
+  };
 
   // 되돌리기·밖에서 고침으로 페이지가 줄면 범위 안으로
   const pageCount = config?.pages.length ?? 0;
@@ -82,7 +148,26 @@ export function Editor() {
 
       <UpdateBanner />
 
-      <PageTabs config={config} page={page} onSelect={setPage} update={update} />
+      {replacedBackup && (
+        <div className="mx-5 mt-3 flex items-center justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm">
+          <span className="flex min-w-0 items-center gap-2">
+            <ShieldCheck className="size-4 shrink-0 text-emerald-600" />
+            <span className="break-all">{t.share.replaced(replacedBackup)}</span>
+          </span>
+          <Button variant="ghost" size="icon-sm" onClick={() => setReplacedBackup(null)} title={t.share.dismiss}>
+            <X />
+          </Button>
+        </div>
+      )}
+
+      <PageTabs
+        config={config}
+        page={page}
+        onSelect={setPage}
+        update={update}
+        onExport={(i) => exporter.start([i])}
+        onImport={() => void pickAndImport()}
+      />
 
       <main className="flex min-h-0 flex-1 gap-6 overflow-auto p-6">
         <div className="w-[480px] shrink-0">
@@ -93,8 +178,42 @@ export function Editor() {
         </aside>
       </main>
 
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} config={config} update={update} />
+      <SettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        config={config}
+        update={update}
+        onExportAll={() => exporter.start(null)}
+        onImportBackup={() => {
+          setSettingsOpen(false);
+          void pickAndImport();
+        }}
+      />
       <LayoutEditor open={layoutOpen} onOpenChange={setLayoutOpen} config={config} update={update} />
+
+      {exporter.dialogs}
+
+      {preview && !onboarding && (
+        <ImportDialog
+          key={preview.id}
+          preview={preview}
+          config={config}
+          onClose={() => setPreview(null)}
+          onInstalled={(mode, count, backup) => void onInstalled(mode, count, backup)}
+        />
+      )}
+
+      <AlertDialog open={openError !== null} onOpenChange={(open) => !open && setOpenError(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t.share.openFailed}</AlertDialogTitle>
+            <AlertDialogDescription className="break-all">{openError}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction>{t.share.ok}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {onboarding && (
         <Onboarding

@@ -114,6 +114,28 @@ export function useEditorConfig() {
     [show, scheduleSave],
   );
 
+  /**
+   * 코어가 저장한 설정(파일 가져오기)을 바로 받는다. 파일 감시로 같은 내용이 다시 와도 무시된다.
+   * `resetHistory`면 되돌리기 기록을 비운다 (설정 바꾸기는 되돌리기 대상이 아니다).
+   */
+  const adopt = useCallback(
+    (next: Config, resetHistory: boolean) => {
+      // 가져오기 전 내용의 저장 예약이 새 설정을 덮어쓰지 않게
+      window.clearTimeout(timer.current);
+      setStatus({ kind: "saved" });
+      const text = canonical(next);
+      // 파일 감시가 먼저 같은 내용을 보내왔으면 기록은 이미 쌓였다
+      const already = current.current !== null && canonical(current.current) === text;
+      lastSaved.current = text;
+      if (resetHistory) past.current = [];
+      else if (current.current && !already) past.current = [...past.current, current.current].slice(-HISTORY_LIMIT);
+      future.current = [];
+      lastEdit.current = null;
+      show(next);
+    },
+    [show],
+  );
+
   const undo = useCallback(() => {
     const before = current.current;
     const previous = past.current.at(-1);
@@ -159,6 +181,7 @@ export function useEditorConfig() {
     config,
     status,
     update,
+    adopt,
     undo,
     redo,
     canUndo: past.current.length > 0,

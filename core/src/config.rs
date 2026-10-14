@@ -465,7 +465,7 @@ impl Config {
         self.mic_indicator != Some(false) && self.uses_mic_mute()
     }
 
-    fn validate(&self) -> Result<(), String> {
+    pub(crate) fn validate(&self) -> Result<(), String> {
         if self.version != VERSION {
             let v = self.version;
             return Err(tr(

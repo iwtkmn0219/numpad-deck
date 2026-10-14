@@ -42,6 +42,8 @@ export function useEditorConfig() {
   const lastSaved = useRef<string>("");
   /** 마지막 변경의 묶음 키와 시각 (글자 입력을 기록 하나로 묶기 위해) */
   const lastEdit = useRef<{ key: string; at: number } | null>(null);
+  /** 이 시각까지 밖에서 온 변경은 되돌리기 기록에 넣지 않는다 (`forgetHistory`) */
+  const forgetUntil = useRef(0);
 
   const show = useCallback((next: Config) => {
     current.current = next;
@@ -79,7 +81,10 @@ export function useEditorConfig() {
       const text = canonical(c);
       if (text === lastSaved.current) return;
       lastSaved.current = text;
-      if (current.current) past.current = [...past.current, current.current].slice(-HISTORY_LIMIT);
+      if (Date.now() < forgetUntil.current) {
+        forgetUntil.current = 0;
+        past.current = [];
+      } else if (current.current) past.current = [...past.current, current.current].slice(-HISTORY_LIMIT);
       future.current = [];
       show(c);
     });
@@ -136,6 +141,18 @@ export function useEditorConfig() {
     [show],
   );
 
+  /**
+   * 되돌리기 기록을 비우고, 곧(10초 안에) 파일 감시로 올 변경도 기록에 넣지 않는다.
+   * 설정 바꾸기 뒤 설정을 바로 받지 못했을 때 쓴다.
+   */
+  const forgetHistory = useCallback(() => {
+    past.current = [];
+    future.current = [];
+    lastEdit.current = null;
+    forgetUntil.current = Date.now() + 10_000;
+    setHistoryVersion((v) => v + 1);
+  }, []);
+
   const undo = useCallback(() => {
     const before = current.current;
     const previous = past.current.at(-1);
@@ -182,6 +199,7 @@ export function useEditorConfig() {
     status,
     update,
     adopt,
+    forgetHistory,
     undo,
     redo,
     canUndo: past.current.length > 0,

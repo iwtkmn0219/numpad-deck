@@ -204,7 +204,7 @@ export const en: Dict = {
         title: "Replace your settings with this backup?",
         body: (count: number) =>
           `All buttons, pages and the layout will change to this file (${count} page${count === 1 ? "" : "s"}).`,
-        backup: "Your current settings are backed up automatically. Undo (Ctrl+Z) won't bring them back, so import that backup file if you need them.",
+        backup: "Your current settings are backed up automatically. Undo (Ctrl+Z) won't bring them back.",
         where: (folder: string) => `Backup folder: ${folder}`,
         cancel: "Cancel",
         confirm: "Replace",

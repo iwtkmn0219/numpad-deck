@@ -40,7 +40,7 @@ import { ImportDialog } from "./share/ImportDialog";
 
 export function Editor() {
   const t = useT().editor;
-  const { config, status, update, adopt, undo, redo, canUndo, canRedo } = useEditorConfig();
+  const { config, status, update, adopt, forgetHistory, undo, redo, canUndo, canRedo } = useEditorConfig();
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Selection | null>({ kind: "button", key: "7" });
 
@@ -98,13 +98,18 @@ export function Editor() {
     });
   }, [onboardingChecked, onboarding, shareSignal, openShareFile]);
 
-  const onInstalled = async (mode: InstallMode, count: number, backup: string | null) => {
-    setPreview(null);
+  const onInstalled = async (previewId: number, mode: InstallMode, count: number, backup: string | null) => {
+    // 설치하는 사이 새 파일이 열렸으면 그 창은 닫지 않는다
+    setPreview((p) => (p?.id === previewId ? null : p));
     setReplacedBackup(backup);
     // 파일 감시를 기다리지 않고 바로 받는다 (바꾸기는 되돌리기 기록을 비운다).
     // 못 받으면 파일 감시가 보내 준다.
     const next = await getConfig().catch(() => null);
-    if (!next) return;
+    if (!next) {
+      // 바꾸기는 파일 감시로 받을 때도 옛 설정을 되돌리기 기록에 남기지 않는다
+      if (mode === "replace") forgetHistory();
+      return;
+    }
     adopt(next, mode === "replace");
     setPage(mode === "add" ? Math.max(0, next.pages.length - count) : 0);
   };
@@ -199,7 +204,7 @@ export function Editor() {
           preview={preview}
           config={config}
           onClose={() => setPreview(null)}
-          onInstalled={(mode, count, backup) => void onInstalled(mode, count, backup)}
+          onInstalled={(id, mode, count, backup) => void onInstalled(id, mode, count, backup)}
         />
       )}
 

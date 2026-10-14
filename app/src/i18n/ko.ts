@@ -197,7 +197,7 @@ export const ko = {
       replace: {
         title: "지금 설정을 이 백업으로 바꿀까요?",
         body: (count: number) => `버튼·페이지·배치가 모두 이 파일의 내용(페이지 ${count}개)으로 바뀌어요.`,
-        backup: "지금 설정은 자동으로 백업돼요. 되돌리기(Ctrl+Z)로는 돌아오지 않으니 필요하면 백업 파일을 가져오세요.",
+        backup: "지금 설정은 자동으로 백업돼요. 되돌리기(Ctrl+Z)로는 돌아오지 않아요.",
         where: (folder: string) => `백업 위치: ${folder}`,
         cancel: "취소",
         confirm: "바꾸기",

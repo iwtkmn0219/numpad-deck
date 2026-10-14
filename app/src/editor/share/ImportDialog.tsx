@@ -30,8 +30,11 @@ interface Props {
   preview: Preview;
   config: Config;
   onClose: () => void;
-  /** 설치가 끝났다. `count`는 넣은 페이지 수, `backup`은 "바꾸기"일 때 자동 백업 경로. */
-  onInstalled: (mode: InstallMode, count: number, backup: string | null) => void;
+  /**
+   * 설치가 끝났다. `previewId`는 설치한 미리 보기(그 사이 새 파일이 열렸으면 지금 것과 다르다),
+   * `count`는 넣은 페이지 수, `backup`은 "바꾸기"일 때 자동 백업 경로.
+   */
+  onInstalled: (previewId: number, mode: InstallMode, count: number, backup: string | null) => void;
 }
 
 /**
@@ -62,7 +65,7 @@ export function ImportDialog({ preview, config, onClose, onInstalled }: Props) {
     setError(null);
     try {
       const backup = await installShare({ previewId: preview.id, pages: picked, mode });
-      onInstalled(mode, picked.length, backup);
+      onInstalled(preview.id, mode, picked.length, backup);
     } catch (e) {
       setError(String(e));
       setBusy(false);

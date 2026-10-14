@@ -109,10 +109,15 @@ pub async fn open_share(state: State<'_, ShareState>, path: String) -> Result<Pr
     let (bundle, probe) = tauri::async_runtime::spawn_blocking(move || {
         let bundle = share::read(Path::new(&path)).map_err(|e| e.to_string())?;
         // 설치된 앱 목록을 못 읽으면 앱은 모두 없는 것으로 본다
-        let apps = with_com(apps::list)
-            .ok()
-            .map(|v| v.into_iter().map(|a| a.target.to_lowercase()).collect())
-            .unwrap_or_default();
+        // 스토어 앱 실행 대상이 있을 때만 읽는다 (느리므로)
+        let apps = if share::needs_app_list(&bundle) {
+            with_com(apps::list)
+                .ok()
+                .map(|v| v.into_iter().map(|a| a.target.to_lowercase()).collect())
+                .unwrap_or_default()
+        } else {
+            BTreeSet::new()
+        };
         Ok::<_, String>((bundle, PcProbe { apps }))
     })
     .await
@@ -150,7 +155,8 @@ pub async fn install_share(
     };
     let config = runtime.config();
     let config_path = runtime.config_path().to_path_buf();
-    let replace = choice.mode == InstallMode::Replace;
+    // 바꾸기이거나, 지금 설정 파일이 깨져 기본값으로 떠 있으면 덮어쓰기 전에 백업한다
+    let replace = choice.mode == InstallMode::Replace || runtime.config_error().is_some();
     let (taken, result) = tauri::async_runtime::spawn_blocking(move || {
         let r = (|| {
             let backup = if replace {
@@ -201,6 +207,15 @@ mod tests {
     fn finds_npdeck_case_insensitive() {
         let args = ["app.exe", "--autostart", r"C:\a\Zoom.NPDeck", "b.npdeck"];
         assert_eq!(share_arg(args), Some(PathBuf::from(r"C:\a\Zoom.NPDeck")));
+    }
+
+    #[test]
+    fn accepts_os_strings() {
+        let args = [
+            std::ffi::OsString::from("app.exe"),
+            std::ffi::OsString::from(r"C:\a\b.npdeck"),
+        ];
+        assert_eq!(share_arg(args), Some(PathBuf::from(r"C:\a\b.npdeck")));
     }
 
     #[test]

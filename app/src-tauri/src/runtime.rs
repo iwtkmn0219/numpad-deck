@@ -518,6 +518,11 @@ impl Runtime {
             .submit(tr("효과음 멈추기", "Stop sounds"), Action::StopSounds);
     }
 
+    /// 설정 파일을 읽지 못해 기본값으로 떠 있으면 그 오류.
+    pub fn config_error(&self) -> Option<String> {
+        self.state.lock().unwrap().config_error.clone()
+    }
+
     pub fn config_path(&self) -> &std::path::Path {
         &self.config_path
     }

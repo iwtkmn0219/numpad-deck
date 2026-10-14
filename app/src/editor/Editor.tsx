@@ -54,10 +54,10 @@ export function Editor() {
   // 첫 실행이면 온보딩부터
   const [onboardingChecked, setOnboardingChecked] = useState(false);
   useEffect(() => {
-    void invoke<boolean>("onboarding_pending").then((pending) => {
-      setOnboarding(pending);
-      setOnboardingChecked(true);
-    });
+    void invoke<boolean>("onboarding_pending")
+      .then((pending) => setOnboarding(pending))
+      .catch(() => setOnboarding(false)) // 실패하면 대기 아님으로 보고 공유 요청은 계속 받는다
+      .finally(() => setOnboardingChecked(true));
   }, []);
 
   // 공유 파일: 내보내기 흐름, 가져오기 창

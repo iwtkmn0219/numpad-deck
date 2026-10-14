@@ -32,7 +32,7 @@
     ],
     "createUpdaterArtifacts": true,
     "fileAssociations": [
-      { "ext": ["npdeck"], "name": "Numpad Deck", "description": "Numpad Deck page", "role": "Viewer" }
+      { "ext": ["npdeck"], "name": "Numpad Deck", "description": "Numpad Deck file", "role": "Viewer" }
     ]
   },
   "plugins": {

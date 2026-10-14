@@ -183,7 +183,7 @@ export const ko = {
       import: {
         titlePages: "파일에서 페이지 가져오기",
         titleBackup: "백업 파일 가져오기",
-        body: (app: string) => `Numpad Deck ${app}에서 만든 파일이에요. 가져올 페이지를 골라 주세요.`,
+        body: (app: string) => `Numpad Deck${app ? ` ${app}` : ""}에서 만든 파일이에요. 가져올 페이지를 골라 주세요.`,
         caution: "모르는 사람이 보낸 파일이면 버튼이 하는 일을 꼭 확인하세요.",
         selectAll: "모두 선택",
         buttons: (count: number) => `버튼 ${count}개`,

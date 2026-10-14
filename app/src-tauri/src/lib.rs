@@ -337,9 +337,9 @@ pub fn run() {
                     runtime.reposition_mic_badge();
                 });
             }
-            let autostarted = std::env::args().any(|a| a == AUTOSTART_ARG);
+            let autostarted = std::env::args_os().any(|a| a == AUTOSTART_ARG);
             // 더블클릭으로 열린 공유 파일: 자동 실행 인자와 함께여도 편집기를 연다
-            let share_file = share::share_arg(std::env::args().skip(1));
+            let share_file = share::share_arg(std::env::args_os().skip(1));
             if let Some(path) = &share_file {
                 app.state::<share::ShareState>().set_request(path.clone());
             }

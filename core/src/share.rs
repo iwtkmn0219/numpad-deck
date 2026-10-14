@@ -24,6 +24,8 @@ pub const MAX_SOUND: u64 = 5 * 1024 * 1024;
 pub const MAX_SOUNDS_TOTAL: u64 = 20 * 1024 * 1024;
 /// 묶음 파일 전체 최대 크기.
 pub const MAX_FILE: u64 = 30 * 1024 * 1024;
+/// 묶음 파일의 최대 항목 수.
+pub const MAX_ENTRIES: usize = 512;
 /// manifest.json 최대 크기.
 pub const MAX_MANIFEST: u64 = 1024 * 1024;
 /// 허용하는 소리 확장자 (rodio 기능과 같음).
@@ -456,6 +458,9 @@ pub fn read(path: &Path) -> Result<Bundle, ShareError> {
         return Err(ShareError::TooBig);
     }
     let mut archive = zip::ZipArchive::new(file).map_err(|_| ShareError::NotDeckFile)?;
+    if archive.len() > MAX_ENTRIES {
+        return Err(ShareError::TooBig);
+    }
     let mut manifest_bytes = None;
     let mut sounds = BTreeMap::new();
     let mut total = 0u64;
@@ -468,6 +473,11 @@ pub fn read(path: &Path) -> Result<Bundle, ShareError> {
             manifest_bytes = Some(read_limited(&mut entry, MAX_MANIFEST)?);
         } else if is_sound_entry(&name) {
             let bytes = read_limited(&mut entry, MAX_SOUND)?;
+            // 이름이 내용의 해시와 다르면 위조로 보고 무시한다
+            let ext = name.rsplit('.').next().unwrap_or("");
+            if sound_entry_name(&bytes, ext) != name {
+                continue;
+            }
             total += bytes.len() as u64;
             if total > MAX_SOUNDS_TOTAL {
                 return Err(ShareError::TooBig);
@@ -494,7 +504,33 @@ pub fn read(path: &Path) -> Result<Bundle, ShareError> {
         pages: manifest.pages.clone(),
     };
     config.validate().map_err(ShareError::Invalid)?;
+    // 버전 문자열은 숫자와 점 16자까지만 믿는다 (화면에 그대로 보이므로)
+    let mut manifest = manifest;
+    if !(1..=16).contains(&manifest.app.len())
+        || !manifest
+            .app
+            .bytes()
+            .all(|b| b.is_ascii_digit() || b == b'.')
+    {
+        manifest.app = String::new();
+    }
     Ok(Bundle { manifest, sounds })
+}
+
+/// 묶음에 `shell:AppsFolder\` 실행 대상이 있는가 (없으면 설치된 앱 목록을 읽을 필요가 없다).
+pub fn needs_app_list(bundle: &Bundle) -> bool {
+    let mut found = false;
+    for page in &bundle.manifest.pages {
+        for_each_action(page, &mut |a| {
+            if let Action::Launch { target, .. } = a {
+                found |= target
+                    .trim_start()
+                    .to_ascii_lowercase()
+                    .starts_with(r"shell:appsfolder\");
+            }
+        });
+    }
+    found
 }
 
 /// 이 PC에 대상이 있는지 (앱이 실제 확인으로 채운다, 시험은 가짜).
@@ -745,7 +781,13 @@ pub fn install(
                 continue;
             }
             let bytes = &bundle.sounds[&format!("sounds/{name}")];
-            std::fs::write(&dest, bytes).map_err(io_err)?;
+            // 임시 파일에 쓴 뒤 옮겨, 중간에 끊겨도 잘린 파일이 남지 않게 한다
+            let tmp = dir.join(format!("{name}.tmp"));
+            let r = std::fs::write(&tmp, bytes).and_then(|_| std::fs::rename(&tmp, &dest));
+            if let Err(e) = r {
+                let _ = std::fs::remove_file(&tmp);
+                return Err(io_err(e));
+            }
         }
     }
     Ok(config)
@@ -1239,6 +1281,22 @@ mod tests {
         );
         let b = read(&path).unwrap();
         assert!(b.sounds.is_empty());
+        let good = sound_entry_name(b"x", "wav");
+        make_zip(
+            &path,
+            &[
+                ("manifest.json", manifest_bytes(1, page)),
+                (good.as_str(), b"x".to_vec()),
+            ],
+        );
+        assert_eq!(read(&path).unwrap().sounds.len(), 1);
+    }
+
+    #[test]
+    fn read_ignores_sound_whose_name_does_not_match_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.npdeck");
+        let page = r#"{"name":"A","buttons":{}}"#;
         make_zip(
             &path,
             &[
@@ -1246,7 +1304,60 @@ mod tests {
                 ("sounds/0123456789abcdef.wav", b"x".to_vec()),
             ],
         );
-        assert_eq!(read(&path).unwrap().sounds.len(), 1);
+        assert!(read(&path).unwrap().sounds.is_empty());
+    }
+
+    #[test]
+    fn needs_app_list_only_for_apps_folder_targets() {
+        let plain = bundle_of(Kind::Pages, &[mic_page("A")], &[]);
+        assert!(!needs_app_list(&plain));
+        let exe = page_with(
+            "E",
+            &[("7", r#"{"type":"launch","target":"C:\\a\\b.exe"}"#)],
+        );
+        assert!(!needs_app_list(&bundle_of(Kind::Pages, &[exe], &[])));
+        let store = page_with(
+            "S",
+            &[(
+                "7",
+                r#"{"type":"sequence","steps":[{"type":"launch","target":"SHELL:AppsFolder\\X!App"}]}"#,
+            )],
+        );
+        assert!(needs_app_list(&bundle_of(Kind::Pages, &[store], &[])));
+    }
+
+    #[test]
+    fn read_rejects_too_many_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.npdeck");
+        let page = r#"{"name":"A","buttons":{}}"#;
+        let names: Vec<String> = (0..MAX_ENTRIES).map(|i| format!("x/{i}.txt")).collect();
+        let mut all = vec![("manifest.json", manifest_bytes(1, page))];
+        for n in &names {
+            all.push((n.as_str(), vec![]));
+        }
+        make_zip(&path, &all); // manifest 포함 MAX_ENTRIES + 1개
+        assert!(matches!(read(&path), Err(ShareError::TooBig)));
+    }
+
+    #[test]
+    fn read_keeps_only_plain_version_string() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.npdeck");
+        let with_app = |app: &str| {
+            format!(r#"{{"format":1,"kind":"pages","app":"{app}","pages":[{{"name":"A","buttons":{{}}}}]}}"#)
+                .into_bytes()
+        };
+        for (app, want) in [
+            ("0.6.0", "0.6.0"),
+            ("", ""),
+            ("1.2.3 <b>", ""),
+            ("12345678901234567", ""),
+            ("v1", ""),
+        ] {
+            make_zip(&path, &[("manifest.json", with_app(app))]);
+            assert_eq!(read(&path).unwrap().manifest.app, want, "{app}");
+        }
     }
 
     #[test]
@@ -1270,10 +1381,18 @@ mod tests {
         assert!(matches!(read(&path), Err(ShareError::TooBig)));
         // 소리 합계 초과 (5 MiB x 5 = 25 MiB)
         let part = vec![0u8; MAX_SOUND as usize];
-        let names: Vec<String> = (0..5).map(|i| format!("sounds/{i:016x}.wav")).collect();
+        // 내용을 조금씩 달리해 이름(해시)이 맞는 소리 5개
+        let parts: Vec<Vec<u8>> = (0..5u8)
+            .map(|i| {
+                let mut p = part.clone();
+                p[0] = i;
+                p
+            })
+            .collect();
+        let names: Vec<String> = parts.iter().map(|p| sound_entry_name(p, "wav")).collect();
         let mut all = vec![("manifest.json", manifest_bytes(1, page))];
-        for n in &names {
-            all.push((n.as_str(), part.clone()));
+        for (n, p) in names.iter().zip(&parts) {
+            all.push((n.as_str(), p.clone()));
         }
         make_zip(&path, &all);
         assert!(matches!(read(&path), Err(ShareError::TooBig)));
@@ -1673,10 +1792,15 @@ mod tests {
             std::fs::read(sdir.join("0123456789abcdef.wav")).unwrap(),
             b"data"
         );
+        assert!(std::fs::read_dir(&sdir).unwrap().all(|e| e
+            .unwrap()
+            .path()
+            .extension()
+            .is_some_and(|x| x == "wav")));
         // 두 번째 설치: 파일은 하나, 덮어쓰지 않음
         std::fs::write(sdir.join("0123456789abcdef.wav"), b"mine").unwrap();
         install(&out, &b, &choice(&[0], InstallMode::Add), dir.path()).unwrap();
-        assert_eq!(std::fs::read_dir(&sdir).unwrap().count(), 1);
+        assert_eq!(std::fs::read_dir(&sdir).unwrap().count(), 1); // .tmp도 남지 않음
         assert_eq!(
             std::fs::read(sdir.join("0123456789abcdef.wav")).unwrap(),
             b"mine"

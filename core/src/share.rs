@@ -1,9 +1,10 @@
 //! 페이지 공유 파일(`.npdeck`) 형식과 경로 이식성.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -496,6 +497,322 @@ pub fn read(path: &Path) -> Result<Bundle, ShareError> {
     Ok(Bundle { manifest, sounds })
 }
 
+/// 이 PC에 대상이 있는지 (앱이 실제 확인으로 채운다, 시험은 가짜).
+pub trait Probe {
+    fn file_exists(&self, expanded: &str) -> bool;
+    fn dir_exists(&self, expanded: &str) -> bool;
+    /// `shell:AppsFolder\…` 대상 전체를 받아 설치돼 있는지 본다.
+    fn app_installed(&self, apps_folder_target: &str) -> bool;
+}
+
+/// 버튼 하나의 미리 보기 표시.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../app/src/bindings/")]
+pub struct ButtonNote {
+    /// 키캡 글자
+    pub key: String,
+    /// 실행·입력을 일으키는 동작이 있음
+    pub caution: bool,
+    /// 이 PC에 대상이 없음
+    pub missing: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../app/src/bindings/")]
+pub struct PreviewPage {
+    pub page: Page,
+    pub notes: Vec<ButtonNote>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../app/src/bindings/")]
+pub struct Preview {
+    /// 열 때마다 새로 매긴다 (오래된 미리 보기로 설치하지 않게).
+    #[ts(type = "number")]
+    pub id: u64,
+    pub kind: Kind,
+    pub app: String,
+    pub pages: Vec<PreviewPage>,
+    /// 백업일 때만
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub layout: Option<Vec<KeyPlace>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub system_keys: Option<SystemKeys>,
+    pub any_caution: bool,
+}
+
+/// 동작 하나의 (주의, 없음). 묶음은 단계 중 하나라도 해당하면 해당한다.
+fn action_flags(a: &Action, bundle: &Bundle, probe: &impl Probe) -> (bool, bool) {
+    match a {
+        Action::Launch { target, .. } => {
+            let missing = if target.to_lowercase().starts_with("shell:appsfolder") {
+                !probe.app_installed(target)
+            } else {
+                !probe.file_exists(&expand_env(target))
+            };
+            (true, missing)
+        }
+        Action::Open { target } => {
+            let missing = if target.contains("://") || target.to_lowercase().starts_with("mailto:")
+            {
+                false
+            } else {
+                let p = expand_env(target);
+                !(probe.file_exists(&p) || probe.dir_exists(&p))
+            };
+            (true, missing)
+        }
+        Action::Hotkey { .. } | Action::Text { .. } => (true, false),
+        Action::Sound { file, .. } => {
+            let missing = if file.starts_with("sounds/") {
+                !bundle.sounds.contains_key(file)
+            } else {
+                !probe.file_exists(&expand_env(file))
+            };
+            (false, missing)
+        }
+        Action::Sequence { steps } => steps.iter().fold((false, false), |acc, s| {
+            let f = action_flags(s, bundle, probe);
+            (acc.0 || f.0, acc.1 || f.1)
+        }),
+        Action::Media { .. } | Action::MicMute | Action::StopSounds | Action::Delay { .. } => {
+            (false, false)
+        }
+    }
+}
+
+/// 묶음의 페이지마다 버튼의 주의·없음을 판정한다 (디스크는 `probe`로만 본다).
+pub fn preview(bundle: &Bundle, id: u64, probe: &impl Probe) -> Preview {
+    let m = &bundle.manifest;
+    let mut any_caution = false;
+    let pages = m
+        .pages
+        .iter()
+        .map(|page| {
+            let notes = page
+                .buttons
+                .iter()
+                .map(|(key, button)| {
+                    let (caution, missing) = action_flags(&button.action, bundle, probe);
+                    any_caution |= caution;
+                    ButtonNote {
+                        key: key.key().label().to_string(),
+                        caution,
+                        missing,
+                    }
+                })
+                .collect();
+            PreviewPage {
+                page: page.clone(),
+                notes,
+            }
+        })
+        .collect();
+    let backup = m.kind == Kind::Backup;
+    Preview {
+        id,
+        kind: m.kind,
+        app: m.app.clone(),
+        pages,
+        layout: m.layout.clone().filter(|_| backup),
+        system_keys: m.system_keys.clone().filter(|_| backup),
+        any_caution,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../app/src/bindings/")]
+pub enum InstallMode {
+    Add,
+    Replace,
+}
+
+#[derive(Debug, Clone, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../app/src/bindings/")]
+pub struct InstallChoice {
+    #[ts(type = "number")]
+    pub preview_id: u64,
+    /// 고른 페이지 번호 (0부터)
+    pub pages: Vec<usize>,
+    pub mode: InstallMode,
+}
+
+/// 겹치지 않는 페이지 이름: `이름`, `이름 (2)`, `이름 (3)` …
+fn unique_name(name: &str, used: &BTreeSet<String>) -> String {
+    if !used.contains(name) {
+        return name.to_string();
+    }
+    (2u32..)
+        .map(|n| format!("{name} ({n})"))
+        .find(|c| !used.contains(c))
+        .expect("끝없는 번호")
+}
+
+/// 고른 페이지를 설정에 넣은 새 `Config`를 돌려준다 (저장은 호출자가 한다).
+/// 묶음의 소리는 `data_dir/sounds`에 쓴다 (이미 있으면 건너뜀).
+pub fn install(
+    current: &Config,
+    bundle: &Bundle,
+    choice: &InstallChoice,
+    data_dir: &Path,
+) -> Result<Config, ShareError> {
+    let m = &bundle.manifest;
+    if choice.mode == InstallMode::Replace && m.kind != Kind::Backup {
+        return Err(ShareError::Invalid(tr(
+            "이 파일은 설정 전체를 바꿀 수 없어요.",
+            "This file cannot replace all settings.",
+        )));
+    }
+    if choice.pages.is_empty() {
+        return Err(ShareError::Invalid(tr(
+            "가져올 페이지를 골라 주세요.",
+            "Please choose pages to import.",
+        )));
+    }
+    if choice.pages.iter().any(|&i| i >= m.pages.len()) {
+        return Err(ShareError::Invalid(tr(
+            "없는 페이지를 골랐어요.",
+            "That page does not exist.",
+        )));
+    }
+
+    // 소리 경로를 가져온 폴더 기준으로 바꾼다 (묶음에 없는 소리는 그대로 둔다).
+    let mut sound_names: BTreeSet<String> = BTreeSet::new();
+    let mut picked: Vec<Page> = choice.pages.iter().map(|&i| m.pages[i].clone()).collect();
+    for page in &mut picked {
+        for_each_action_mut(page, &mut |a| {
+            if let Action::Sound { file, .. } = a {
+                if bundle.sounds.contains_key(file.as_str()) {
+                    let name = file.trim_start_matches("sounds/").to_string();
+                    *file = format!(r"%APPDATA%\NumpadDeck\sounds\{name}");
+                    sound_names.insert(name);
+                }
+            }
+        });
+    }
+
+    let mut config = match choice.mode {
+        InstallMode::Add => {
+            let mut used: BTreeSet<String> = current.pages.iter().map(|p| p.name.clone()).collect();
+            for page in &mut picked {
+                page.name = unique_name(&page.name, &used);
+                used.insert(page.name.clone());
+            }
+            let mut c = current.clone();
+            c.pages.extend(picked);
+            c
+        }
+        InstallMode::Replace => Config {
+            version: crate::config::VERSION,
+            language: m.language,
+            layout: m.layout.clone(),
+            system_keys: m.system_keys.clone(),
+            mic_indicator: m.mic_indicator,
+            pages: picked,
+        },
+    };
+    config.version = crate::config::VERSION;
+    config.validate().map_err(ShareError::Invalid)?;
+
+    // 문제가 없을 때만 디스크에 쓴다.
+    if !sound_names.is_empty() {
+        let dir = data_dir.join("sounds");
+        std::fs::create_dir_all(&dir).map_err(io_err)?;
+        for name in &sound_names {
+            let dest = dir.join(name);
+            if dest.exists() {
+                continue;
+            }
+            let bytes = &bundle.sounds[&format!("sounds/{name}")];
+            std::fs::write(&dest, bytes).map_err(io_err)?;
+        }
+    }
+    Ok(config)
+}
+
+/// 남겨 둘 자동 백업 개수.
+const KEEP_BACKUPS: usize = 10;
+
+/// 1970-01-01부터 지난 일수 → (년, 월, 일). 양력, 윤년 포함 (Howard Hinnant의 civil_from_days).
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    (y, m, d)
+}
+
+/// `YYYYMMDD-HHMMSS` (UTC). chrono를 쓰지 않으려고 직접 계산한다: 파일 이름은 정렬용이라
+/// 현지 시각이 아니어도 된다.
+fn stamp(now: SystemTime) -> String {
+    let secs = match now.duration_since(SystemTime::UNIX_EPOCH) {
+        Ok(d) => d.as_secs() as i64,
+        Err(e) => -(e.duration().as_secs() as i64),
+    };
+    let (y, mo, d) = civil_from_days(secs.div_euclid(86_400));
+    let t = secs.rem_euclid(86_400);
+    format!(
+        "{y:04}{mo:02}{d:02}-{:02}{:02}{:02}",
+        t / 3600,
+        t % 3600 / 60,
+        t % 60
+    )
+}
+
+/// `config-<시각>[-<번호>].json` → (시각, 번호) 정렬 키. 형식이 다르면 None.
+fn backup_sort_key(file_name: &str) -> Option<(String, u32)> {
+    let stem = file_name.strip_prefix("config-")?.strip_suffix(".json")?;
+    let mut it = stem.splitn(3, '-');
+    let (date, time) = (it.next()?, it.next()?);
+    let n = it.next().map_or(Some(1), |n| n.parse().ok())?;
+    Some((format!("{date}-{time}"), n))
+}
+
+/// 지금 설정 파일을 같은 폴더의 `backups/`로 복사하고 최신 10개만 남긴다. 복사한 경로를 돌려준다.
+pub fn backup_config(config_path: &Path, now: SystemTime) -> Result<PathBuf, ShareError> {
+    let dir = config_path
+        .parent()
+        .ok_or_else(|| ShareError::Io("no parent".into()))?
+        .join("backups");
+    std::fs::create_dir_all(&dir).map_err(io_err)?;
+    let base = format!("config-{}", stamp(now));
+    let mut dest = dir.join(format!("{base}.json"));
+    let mut n = 2;
+    // 같은 초에 또 만들면 번호를 붙여 덮어쓰지 않는다.
+    while dest.exists() {
+        dest = dir.join(format!("{base}-{n}.json"));
+        n += 1;
+    }
+    std::fs::copy(config_path, &dest).map_err(io_err)?;
+
+    let mut all: Vec<((String, u32), PathBuf)> = std::fs::read_dir(&dir)
+        .map_err(io_err)?
+        .filter_map(|e| e.ok())
+        .filter_map(|e| {
+            let key = backup_sort_key(&e.file_name().to_string_lossy())?;
+            Some((key, e.path()))
+        })
+        .collect();
+    all.sort();
+    let extra = all.len().saturating_sub(KEEP_BACKUPS);
+    for (_, old) in all.into_iter().take(extra) {
+        let _ = std::fs::remove_file(old);
+    }
+    Ok(dest)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -956,5 +1273,388 @@ mod tests {
         assert!(matches!(read(&path), Err(ShareError::Invalid(_))));
         make_zip(&path, &[("manifest.json", manifest_bytes(1, ""))]);
         assert!(matches!(read(&path), Err(ShareError::Invalid(_))));
+    }
+
+    // ---- 미리 보기·설치·백업 ----
+
+    #[derive(Default)]
+    struct FakeProbe {
+        files: BTreeSet<String>,
+        dirs: BTreeSet<String>,
+        apps: BTreeSet<String>,
+    }
+
+    impl Probe for FakeProbe {
+        fn file_exists(&self, p: &str) -> bool {
+            self.files.contains(p)
+        }
+        fn dir_exists(&self, p: &str) -> bool {
+            self.dirs.contains(p)
+        }
+        fn app_installed(&self, t: &str) -> bool {
+            self.apps.contains(t)
+        }
+    }
+
+    fn bundle_of(kind: Kind, pages_json: &[String], sounds: &[(&str, &[u8])]) -> Bundle {
+        let json = format!(
+            r#"{{"format":1,"kind":"pages","app":"t","pages":[{}]}}"#,
+            pages_json.join(",")
+        );
+        let mut manifest: Manifest = serde_json::from_str(&json).unwrap();
+        manifest.kind = kind;
+        Bundle {
+            manifest,
+            sounds: sounds
+                .iter()
+                .map(|(n, b)| (n.to_string(), b.to_vec()))
+                .collect(),
+        }
+    }
+
+    fn page_with(name: &str, actions: &[(&str, &str)]) -> String {
+        let btns: Vec<String> = actions
+            .iter()
+            .map(|(k, a)| format!(r#""{k}":{{"label":"b","action":{a}}}"#))
+            .collect();
+        format!(r#"{{"name":"{name}","buttons":{{{}}}}}"#, btns.join(","))
+    }
+
+    fn mic_page(name: &str) -> String {
+        page_with(name, &[("7", r#"{"type":"micMute"}"#)])
+    }
+
+    fn notes_of(b: &Bundle, probe: &FakeProbe) -> Vec<ButtonNote> {
+        preview(b, 1, probe).pages.remove(0).notes
+    }
+
+    #[test]
+    fn preview_caution_by_action_kind() {
+        let page = page_with(
+            "p",
+            &[
+                ("7", r#"{"type":"launch","target":"a.exe"}"#),
+                ("8", r#"{"type":"open","target":"https://x.y"}"#),
+                ("9", r#"{"type":"hotkey","keys":["Ctrl","C"]}"#),
+                ("4", r#"{"type":"text","text":"hi"}"#),
+                ("5", r#"{"type":"media","command":"playPause"}"#),
+                ("6", r#"{"type":"micMute"}"#),
+                ("1", r#"{"type":"stopSounds"}"#),
+                ("2", r#"{"type":"sound","file":"a.wav"}"#),
+                (
+                    "3",
+                    r#"{"type":"sequence","steps":[{"type":"delay","ms":5},{"type":"text","text":"x"}]}"#,
+                ),
+                (
+                    "0",
+                    r#"{"type":"sequence","steps":[{"type":"delay","ms":5},{"type":"micMute"}]}"#,
+                ),
+            ],
+        );
+        let b = bundle_of(Kind::Pages, &[page], &[]);
+        let pv = preview(&b, 7, &FakeProbe::default());
+        assert_eq!(pv.id, 7);
+        let mut caution: Vec<(String, bool)> = pv.pages[0]
+            .notes
+            .iter()
+            .map(|n| (n.key.clone(), n.caution))
+            .collect();
+        caution.sort();
+        let mut want: Vec<(String, bool)> = [
+            ("7", true),
+            ("8", true),
+            ("9", true),
+            ("4", true),
+            ("5", false),
+            ("6", false),
+            ("1", false),
+            ("2", false),
+            ("3", true),
+            ("0", false),
+        ]
+        .iter()
+        .map(|(k, c)| (k.to_string(), *c))
+        .collect();
+        want.sort();
+        assert_eq!(caution, want);
+        assert!(pv.any_caution);
+        assert!(pv.layout.is_none() && pv.system_keys.is_none());
+    }
+
+    #[test]
+    fn preview_no_caution_for_safe_pages() {
+        let b = bundle_of(Kind::Pages, &[mic_page("p")], &[]);
+        assert!(!preview(&b, 1, &FakeProbe::default()).any_caution);
+    }
+
+    #[test]
+    fn preview_missing_launch_open_sound() {
+        let mut probe = FakeProbe::default();
+        std::env::set_var("NPDK_SHARE_T", r"C:\t");
+        probe.files.insert(r"C:\t\ok.exe".into());
+        probe.dirs.insert(r"C:\docs".into());
+        probe.apps.insert(r"shell:AppsFolder\Store.App!App".into());
+        probe.files.insert(r"C:\snd\ok.wav".into());
+        let page = page_with(
+            "p",
+            &[
+                (
+                    "7",
+                    r#"{"type":"launch","target":"%NPDK_SHARE_T%\\ok.exe"}"#,
+                ),
+                (
+                    "8",
+                    r#"{"type":"launch","target":"%NPDK_SHARE_T%\\no.exe"}"#,
+                ),
+                (
+                    "9",
+                    r#"{"type":"launch","target":"shell:AppsFolder\\Store.App!App"}"#,
+                ),
+                (
+                    "4",
+                    r#"{"type":"launch","target":"shell:AppsFolder\\Gone.App!App"}"#,
+                ),
+                ("5", r#"{"type":"open","target":"https://nowhere.example"}"#),
+                ("6", r#"{"type":"open","target":"mailto:a@b.c"}"#),
+                ("1", r#"{"type":"open","target":"C:\\docs"}"#),
+                ("2", r#"{"type":"open","target":"C:\\nope"}"#),
+                (
+                    "3",
+                    r#"{"type":"sound","file":"sounds/0123456789abcdef.wav"}"#,
+                ),
+                (
+                    "0",
+                    r#"{"type":"sound","file":"sounds/ffffffffffffffff.wav"}"#,
+                ),
+                ("+", r#"{"type":"sound","file":"C:\\snd\\ok.wav"}"#),
+                ("Enter", r#"{"type":"sound","file":"C:\\snd\\gone.wav"}"#),
+            ],
+        );
+        let b = bundle_of(
+            Kind::Pages,
+            &[page],
+            &[("sounds/0123456789abcdef.wav", b"x")],
+        );
+        let mut missing: Vec<(String, bool)> = notes_of(&b, &probe)
+            .iter()
+            .map(|n| (n.key.clone(), n.missing))
+            .collect();
+        missing.sort();
+        let mut want: Vec<(String, bool)> = [
+            ("7", false),
+            ("8", true),
+            ("9", false),
+            ("4", true),
+            ("5", false),
+            ("6", false),
+            ("1", false),
+            ("2", true),
+            ("3", false),
+            ("0", true),
+            ("+", false),
+            ("Enter", true),
+        ]
+        .iter()
+        .map(|(k, c)| (k.to_string(), *c))
+        .collect();
+        want.sort();
+        assert_eq!(missing, want);
+    }
+
+    #[test]
+    fn preview_sequence_missing_if_any_step_missing() {
+        let page = page_with(
+            "p",
+            &[
+                (
+                    "7",
+                    r#"{"type":"sequence","steps":[{"type":"sound","file":"sounds/ffffffffffffffff.wav"},{"type":"text","text":"x"}]}"#,
+                ),
+                (
+                    "8",
+                    r#"{"type":"sequence","steps":[{"type":"delay","ms":5},{"type":"launch","target":"C:\\none.exe"}]}"#,
+                ),
+            ],
+        );
+        let b = bundle_of(Kind::Pages, &[page], &[]);
+        let n = notes_of(&b, &FakeProbe::default());
+        assert!(n.iter().all(|n| n.missing && n.caution), "{n:?}");
+    }
+
+    #[test]
+    fn preview_backup_carries_settings() {
+        let mut b = bundle_of(Kind::Backup, &[mic_page("p")], &[]);
+        b.manifest.system_keys =
+            Some(serde_json::from_str(r#"{"prev":"*","next":"/","osd":"-","first":"."}"#).unwrap());
+        let pv = preview(&b, 1, &FakeProbe::default());
+        assert_eq!(pv.kind, Kind::Backup);
+        assert!(pv.system_keys.is_some());
+    }
+
+    fn two_pages() -> Vec<String> {
+        vec![mic_page("Music"), mic_page("Work")]
+    }
+
+    fn choice(pages: &[usize], mode: InstallMode) -> InstallChoice {
+        InstallChoice {
+            preview_id: 1,
+            pages: pages.to_vec(),
+            mode,
+        }
+    }
+
+    #[test]
+    fn install_add_renames_duplicates() {
+        let dir = tempfile::tempdir().unwrap();
+        let cur = config_of(&[mic_page("Music")], "");
+        let b = bundle_of(Kind::Pages, &two_pages(), &[]);
+        let out = install(&cur, &b, &choice(&[0, 0, 1], InstallMode::Add), dir.path()).unwrap();
+        let names: Vec<&str> = out.pages.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, ["Music", "Music (2)", "Music (3)", "Work"]);
+        // 또 설치하면 다음 번호
+        let out2 = install(&out, &b, &choice(&[0], InstallMode::Add), dir.path()).unwrap();
+        assert_eq!(out2.pages.last().unwrap().name, "Music (4)");
+    }
+
+    #[test]
+    fn install_add_ignores_manifest_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let cur = config_of(&[mic_page("A")], r#""language":"ko","#);
+        let mut b = bundle_of(Kind::Pages, &two_pages(), &[]);
+        b.manifest.language = Some(Lang::En);
+        b.manifest.mic_indicator = Some(false);
+        let out = install(&cur, &b, &choice(&[0], InstallMode::Add), dir.path()).unwrap();
+        assert_eq!(out.language, cur.language);
+        assert_eq!(out.mic_indicator, None);
+    }
+
+    fn sound_page(name: &str) -> String {
+        page_with(
+            name,
+            &[
+                (
+                    "7",
+                    r#"{"type":"sound","file":"sounds/0123456789abcdef.wav"}"#,
+                ),
+                (
+                    "8",
+                    r#"{"type":"sequence","steps":[{"type":"sound","file":"sounds/0123456789abcdef.wav"},{"type":"sound","file":"sounds/ffffffffffffffff.wav"}]}"#,
+                ),
+            ],
+        )
+    }
+
+    #[test]
+    fn install_writes_sounds_once_and_rewrites_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let cur = config_of(&[mic_page("A")], "");
+        let b = bundle_of(
+            Kind::Pages,
+            &[sound_page("S")],
+            &[("sounds/0123456789abcdef.wav", b"data")],
+        );
+        let out = install(&cur, &b, &choice(&[0], InstallMode::Add), dir.path()).unwrap();
+        let mut files = vec![];
+        for_each_action(&out.pages[1], &mut |a| {
+            if let Action::Sound { file, .. } = a {
+                files.push(file.clone());
+            }
+        });
+        let want = r"%APPDATA%\NumpadDeck\sounds\0123456789abcdef.wav";
+        // 묶음에 없는 소리는 그대로
+        assert_eq!(files, [want, want, "sounds/ffffffffffffffff.wav"]);
+        let sdir = dir.path().join("sounds");
+        assert_eq!(
+            std::fs::read(sdir.join("0123456789abcdef.wav")).unwrap(),
+            b"data"
+        );
+        // 두 번째 설치: 파일은 하나, 덮어쓰지 않음
+        std::fs::write(sdir.join("0123456789abcdef.wav"), b"mine").unwrap();
+        install(&out, &b, &choice(&[0], InstallMode::Add), dir.path()).unwrap();
+        assert_eq!(std::fs::read_dir(&sdir).unwrap().count(), 1);
+        assert_eq!(
+            std::fs::read(sdir.join("0123456789abcdef.wav")).unwrap(),
+            b"mine"
+        );
+    }
+
+    #[test]
+    fn install_replace_requires_backup_kind() {
+        let dir = tempfile::tempdir().unwrap();
+        let cur = config_of(&[mic_page("A")], "");
+        let b = bundle_of(Kind::Pages, &two_pages(), &[]);
+        let r = install(&cur, &b, &choice(&[0], InstallMode::Replace), dir.path());
+        assert!(matches!(r, Err(ShareError::Invalid(_))), "{r:?}");
+    }
+
+    #[test]
+    fn install_replace_keeps_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let cur = config_of(&[mic_page("Old")], r#""language":"ko","#);
+        let mut b = bundle_of(Kind::Backup, &two_pages(), &[]);
+        b.manifest.language = Some(Lang::En);
+        b.manifest.mic_indicator = Some(false);
+        b.manifest.system_keys =
+            Some(serde_json::from_str(r#"{"prev":"*","next":"/","osd":"-","first":"."}"#).unwrap());
+        let out = install(&cur, &b, &choice(&[1], InstallMode::Replace), dir.path()).unwrap();
+        assert_eq!(out.pages.len(), 1);
+        assert_eq!(out.pages[0].name, "Work");
+        assert_eq!(out.language, Some(Lang::En));
+        assert_eq!(out.mic_indicator, Some(false));
+        assert_eq!(out.system_keys, b.manifest.system_keys);
+        let none = install(&cur, &b, &choice(&[], InstallMode::Replace), dir.path());
+        assert!(matches!(none, Err(ShareError::Invalid(_))));
+    }
+
+    #[test]
+    fn install_rejects_out_of_range() {
+        let dir = tempfile::tempdir().unwrap();
+        let cur = config_of(&[mic_page("A")], "");
+        let b = bundle_of(Kind::Pages, &two_pages(), &[]);
+        let r = install(&cur, &b, &choice(&[0, 2], InstallMode::Add), dir.path());
+        assert!(matches!(r, Err(ShareError::Invalid(_))), "{r:?}");
+        assert!(!dir.path().join("sounds").exists());
+    }
+
+    #[test]
+    fn backup_keeps_latest_ten() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = dir.path().join("config.json");
+        std::fs::write(&cfg, b"{}").unwrap();
+        let t0 = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(86_400 * 365);
+        let mut first = None;
+        for i in 0..11u64 {
+            let p = backup_config(&cfg, t0 + std::time::Duration::from_secs(i * 61)).unwrap();
+            first.get_or_insert(p);
+        }
+        let first = first.unwrap();
+        assert_eq!(
+            first.file_name().unwrap().to_string_lossy(),
+            "config-19710101-000000.json"
+        );
+        assert!(!first.exists());
+        let n = std::fs::read_dir(dir.path().join("backups"))
+            .unwrap()
+            .count();
+        assert_eq!(n, 10);
+    }
+
+    #[test]
+    fn backup_same_second_does_not_overwrite() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = dir.path().join("config.json");
+        std::fs::write(&cfg, b"one").unwrap();
+        let t = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
+        let a = backup_config(&cfg, t).unwrap();
+        std::fs::write(&cfg, b"two").unwrap();
+        let b = backup_config(&cfg, t).unwrap();
+        assert_ne!(a, b);
+        assert_eq!(std::fs::read(&a).unwrap(), b"one");
+        assert_eq!(std::fs::read(&b).unwrap(), b"two");
+        // 2001-09-09 01:46:40 UTC
+        assert_eq!(
+            a.file_name().unwrap().to_string_lossy(),
+            "config-20010909-014640.json"
+        );
     }
 }

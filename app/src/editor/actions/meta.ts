@@ -52,7 +52,8 @@ export function emptyAction(kind: Kind): Action {
     case "open":
       return { type: "open", target: "" };
     case "text":
-      return { type: "text", text: "" };
+      // 새로 만드는 문장 버튼은 붙여넣기로 시작한다 (method가 없는 기존 설정은 직접 입력)
+      return { type: "text", text: "", method: "paste" };
     case "media":
       return { type: "media", command: "playPause" };
     case "micMute":

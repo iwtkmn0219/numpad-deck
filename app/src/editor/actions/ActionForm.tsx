@@ -2,16 +2,24 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Check, Clock, FileSearch, FolderOpen, Keyboard, Plus, X } from "lucide-react";
 import type { Action } from "@/bindings/Action";
 import type { MediaCommand } from "@/bindings/MediaCommand";
+import type { TextMethod } from "@/bindings/TextMethod";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { useT } from "@/i18n";
+import { useLang, useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { pickFile, pickFolder, recordHotkey, type RecordResult } from "../api";
+import { expandPreview, hasPlaceholders, PLACEHOLDERS, type PlaceholderId } from "../textTemplate";
 import { ActionPicker } from "./ActionPicker";
 import { AppPickerDialog } from "./AppPickerDialog";
 import { emptyAction, KIND_ICONS, MAX_DELAY_MS } from "./meta";
@@ -334,16 +342,113 @@ function OpenForm({ action, onChange }: FormProps<Of<"open">>) {
 
 function TextForm({ action, onChange }: FormProps<Of<"text">>) {
   const f = useT().editor.forms.text;
+  const lang = useLang();
+  const area = useRef<HTMLTextAreaElement>(null);
+  /** 입력란에 한 번이라도 들어간 적이 있는지. 아니면 선택 위치가 믿을 만하지 않아 끝에 넣는다. */
+  const focused = useRef(false);
+  const [now, setNow] = useState(() => new Date());
+  const method = action.method ?? "type";
+  const showPreview = hasPlaceholders(action.text);
+
+  // 미리 보기의 시각이 오래되지 않게 가끔 갱신한다 (자리표시자가 있을 때만)
+  useEffect(() => {
+    if (!showPreview) return;
+    setNow(new Date());
+    const id = window.setInterval(() => setNow(new Date()), 15_000);
+    return () => window.clearInterval(id);
+  }, [showPreview]);
+
+  // `method`를 지키려고 action 전체를 펼쳐서 넘긴다
+  const setText = (text: string) => onChange({ ...action, text });
+  const setMethod = (m: TextMethod) => onChange({ ...action, method: m });
+
+  /** 커서 자리(선택 영역이 있으면 그것을 대신해서)에 지금 UI 언어 이름을 넣고 커서를 그 뒤로 옮긴다. */
+  const insert = (id: PlaceholderId) => {
+    const name = PLACEHOLDERS.find((p) => p.id === id)![lang];
+    const el = area.current;
+    const len = action.text.length;
+    const start = el && focused.current ? Math.min(el.selectionStart, len) : len;
+    const end = el && focused.current ? Math.min(el.selectionEnd, len) : len;
+    setText(action.text.slice(0, start) + name + action.text.slice(end));
+    // 값이 화면에 반영된 뒤에 커서를 옮긴다 (반영되면 커서가 끝으로 가기 때문)
+    const caret = start + name.length;
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(caret, caret);
+    });
+  };
+
   return (
-    <div className="space-y-1.5">
-      <Label htmlFor="text-body">{f.text}</Label>
-      <Textarea
-        id="text-body"
-        rows={4}
-        value={action.text}
-        placeholder={f.placeholder}
-        onChange={(e) => onChange({ type: "text", text: e.currentTarget.value })}
-      />
+    <div className="space-y-4">
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <Label htmlFor="text-body">{f.text}</Label>
+          {/* modal을 끄면 메뉴가 열린 동안에도 다른 곳이 눌린다 (언어 메뉴와 같게) */}
+          <DropdownMenu modal={false} onOpenChange={(open) => open && setNow(new Date())}>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Plus /> {f.insert}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              // 닫힐 때 포커스가 단추로 돌아가면 입력란에 커서를 놓을 수 없다
+              onCloseAutoFocus={(e) => e.preventDefault()}
+            >
+              {PLACEHOLDERS.map((p) => (
+                <DropdownMenuItem key={p.id} onSelect={() => insert(p.id)}>
+                  <span>{f.insertItems[p.id]}</span>
+                  <span className="ml-auto pl-6 text-xs text-muted-foreground">
+                    {expandPreview(p[lang], now, lang, f.clipboardExample)}
+                  </span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+        <Textarea
+          ref={area}
+          id="text-body"
+          rows={4}
+          value={action.text}
+          placeholder={f.placeholder}
+          onFocus={() => (focused.current = true)}
+          onChange={(e) => setText(e.currentTarget.value)}
+        />
+        {showPreview && (
+          <div className="rounded-lg bg-muted/50 px-2.5 py-2 text-sm">
+            <span className="text-xs text-muted-foreground">{f.previewLabel}</span>
+            <p className="whitespace-pre-wrap break-words">
+              {expandPreview(action.text, now, lang, f.clipboardSample)}
+            </p>
+          </div>
+        )}
+        {method === "type" && action.text.includes("\n") && (
+          <p className="text-xs text-muted-foreground">{f.multilineWarn}</p>
+        )}
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>{f.method}</Label>
+        <div className="grid gap-1.5">
+          {(["paste", "type"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMethod(m)}
+              className={cn(
+                "flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm",
+                method === m ? "border-selection bg-selection-soft" : "hover:bg-muted/40",
+              )}
+            >
+              <span>
+                {m === "paste" ? f.methodPaste : f.methodType}
+                {m === "type" && <span className="block text-xs text-muted-foreground">{f.methodTypeHint}</span>}
+              </span>
+              {method === m && <Check className="size-4 shrink-0 text-selection" />}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

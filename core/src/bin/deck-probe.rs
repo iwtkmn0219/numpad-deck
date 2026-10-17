@@ -25,7 +25,8 @@
 //!   --clipboard       문장 붙여넣기의 클립보드 보관을 해 보고 결과만 출력한다(내용은 출력하지 않음).
 //!   --type-test MODE  직접 입력 진단: 5초 뒤 앞에 있는 창에 시험 문장을 보낸다(그 사이 대상 창을
 //!                     누른다). MODE: burst(지금 방식, 한 번에) | line(줄마다 보내고 Enter 앞뒤로
-//!                     쉼) | char(한 글자씩 쉼). --gap 쉬는 시간(ms, 기본 30).
+//!                     쉼) | first(line + 줄의 첫 글자 뒤에도 쉼) | char(한 글자씩 쉼).
+//!                     --gap 쉬는 시간(ms, 기본 30).
 //!
 //! 끝내려면 Ctrl+C.
 
@@ -299,12 +300,11 @@ fn start_executor() -> std::io::Result<Executor> {
     Ok(executor)
 }
 
-/// 단축키 녹화를 한 번 해 본다. 녹화 중에는 모든 키가 막힌다 (5초 동안 키가 없으면 끝).
 /// 직접 입력 진단. 보내는 방식만 바꿔 같은 문장을 보낸다.
 fn type_test(mode: &str, gap: Duration) -> ExitCode {
     const TEXT: &str = "안녕하세요.\n주문 확인했습니다.(2026-10-18 02:40)\n감사합니다.";
-    if !matches!(mode, "burst" | "line" | "char") {
-        eprintln!("MODE는 burst | line | char");
+    if !matches!(mode, "burst" | "line" | "first" | "char") {
+        eprintln!("MODE는 burst | line | first | char");
         return ExitCode::FAILURE;
     }
     println!(
@@ -326,6 +326,20 @@ fn type_test(mode: &str, gap: Duration) -> ExitCode {
             }
             inject::text(line)
         }),
+        // line + 줄의 첫 글자만 따로 보내고 쉼.
+        "first" => TEXT.split('\n').enumerate().try_for_each(|(i, line)| {
+            if i > 0 {
+                std::thread::sleep(gap);
+                inject::text("\n")?;
+                std::thread::sleep(gap);
+            }
+            let mut chars = line.chars();
+            if let Some(c) = chars.next() {
+                inject::text(&c.to_string())?;
+                std::thread::sleep(gap);
+            }
+            inject::text(chars.as_str())
+        }),
         _ => TEXT.chars().try_for_each(|c| {
             let r = inject::text(&c.to_string());
             std::thread::sleep(gap);
@@ -336,6 +350,7 @@ fn type_test(mode: &str, gap: Duration) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// 단축키 녹화를 한 번 해 본다. 녹화 중에는 모든 키가 막힌다 (5초 동안 키가 없으면 끝).
 fn record_once() -> ExitCode {
     use deck_core::record::{Outcome, Recorder};
     let (tx, rx) = mpsc::channel();

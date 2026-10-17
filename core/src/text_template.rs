@@ -307,6 +307,42 @@ mod tests {
     }
 
     /// 표의 이름이 하나도 없는 문장(`{이름}`·`{{이름}}` 두 꼴 모두)은 한 글자도 바뀌지 않는다.
+    /// 글자 `{` `}` `x` `😀`로 만든 길이 0~8의 모든 문장(87,381개)에는 표의 이름이 있을 수 없다.
+    /// 그래서 하나도 바뀌지 않아야 하고, 클립보드도 읽지 않아야 한다.
+    #[test]
+    fn exhaustive_short_strings_without_names_are_unchanged() {
+        const ALPHABET: [&str; 4] = ["{", "}", "x", "😀"];
+        let mut level = vec![String::new()];
+        let mut checked = 0;
+        for len in 0..=8 {
+            for s in &level {
+                let out = expand(s, &SAT, Lang::Ko, || {
+                    panic!("클립보드를 읽으면 안 된다: {s:?}")
+                })
+                .unwrap();
+                assert_eq!(&out, s);
+                assert!(!has_placeholders(s), "{s:?}");
+                checked += 1;
+            }
+            if len < 8 {
+                level = level
+                    .iter()
+                    .flat_map(|s| ALPHABET.iter().map(move |c| format!("{s}{c}")))
+                    .collect();
+            }
+        }
+        assert_eq!(checked, 87_381);
+    }
+
+    /// 클립보드 글자는 문장이 만들어진 뒤에 들어가므로 다시 펼치지 않는다.
+    #[test]
+    fn clipboard_content_is_not_expanded_again() {
+        for clip in ["{날짜}", "{{시간}}"] {
+            let out = expand("{클립보드}", &SAT, Lang::Ko, || Some(clip.into())).unwrap();
+            assert_eq!(out, clip);
+        }
+    }
+
     #[test]
     fn text_without_table_names_is_unchanged() {
         let cases = [

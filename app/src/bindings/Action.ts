@@ -4,7 +4,7 @@ import type { TextMethod } from "./TextMethod";
 
 export type Action = { "type": "hotkey", keys: Array<string>, } | { "type": "launch", target: string, args?: string, } | { "type": "open", target: string, } | { "type": "text", text: string, 
 /**
- * 보내는 방식. 없으면 문장 길이·내용으로 앱이 고른다.
+ * 보내는 방식. 없으면 `type`(지금처럼 한 글자씩 입력).
  */
 method?: TextMethod, } | { "type": "media", command: MediaCommand, } | { "type": "micMute" } | { "type": "sound", file: string, 
 /**

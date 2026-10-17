@@ -109,7 +109,7 @@ pub enum Action {
     },
     Text {
         text: String,
-        /// 보내는 방식. 없으면 문장 길이·내용으로 앱이 고른다.
+        /// 보내는 방식. 없으면 `type`(지금처럼 한 글자씩 입력).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         method: Option<TextMethod>,

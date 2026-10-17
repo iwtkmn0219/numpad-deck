@@ -8,6 +8,7 @@ pub mod apps;
 mod audio;
 pub mod mic;
 mod shell;
+mod text;
 mod window;
 
 use std::io;
@@ -111,7 +112,7 @@ fn run_one(action: &Action, audio: &Audio, events: &Sender<ExecEvent>) -> Result
             let keys = keys::parse_all(keys)?;
             inject::hotkey(&keys).map_err(blocked)
         }
-        Action::Text { text, .. } => inject::text(text).map_err(blocked),
+        Action::Text { text, method } => text::run(text, *method),
         Action::Media { command } => inject::tap_vk(media_vk(*command), true).map_err(blocked),
         Action::Open { target } => shell::open(target),
         Action::Launch { target, args } => window::launch_or_focus(target, args.as_deref()),

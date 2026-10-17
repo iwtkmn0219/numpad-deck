@@ -22,10 +22,12 @@ interface Props {
   page: number;
   selected: Selection | null;
   update: (recipe: (draft: Config) => void, coalesce?: string) => void;
+  /** 패널에만 있고 아직 저장하지 않은 버튼이 생기거나 없어지면 알린다 (그 칸에는 끌어 놓을 수 없게) */
+  onUnsavedChange: (unsaved: { page: number; key: ButtonKeyName } | null) => void;
 }
 
 /** 오른쪽 패널: 고른 칸의 버튼 만들기·편집. */
-export function ButtonPanel({ config, page, selected, update }: Props) {
+export function ButtonPanel({ config, page, selected, update, onUnsavedChange }: Props) {
   const t = useT();
   const p = t.editor.panel;
 
@@ -48,6 +50,7 @@ export function ButtonPanel({ config, page, selected, update }: Props) {
       page={page}
       buttonKey={selected.key}
       update={update}
+      onUnsavedChange={onUnsavedChange}
     />
   );
 }
@@ -57,13 +60,14 @@ interface EditorProps {
   page: number;
   buttonKey: ButtonKeyName;
   update: Props["update"];
+  onUnsavedChange: Props["onUnsavedChange"];
 }
 
 /**
  * 버튼 하나의 편집. 동작이 완성되지 않은 동안(예: 단축키를 아직 녹화하지 않음)은 화면에만
  * 두고 저장하지 않는다. 완성되면 바로 저장한다.
  */
-function ButtonEditor({ stored, page, buttonKey, update }: EditorProps) {
+function ButtonEditor({ stored, page, buttonKey, update, onUnsavedChange }: EditorProps) {
   const t = useT();
   const p = t.editor.panel;
   const [draft, setDraft] = useState<DeckButton | null>(stored);
@@ -82,6 +86,14 @@ function ButtonEditor({ stored, page, buttonKey, update }: EditorProps) {
     setPicking(stored === null);
     labelTouched.current = stored !== null && stored.label !== suggestLabel(stored.action, t);
   }, [stored]);
+
+  // 저장되지 않은 채 패널에만 있는 버튼이 있으면 알린다 (끌어 놓아 덮어쓰지 않게)
+  const unsaved = draft !== null && stored === null;
+  useEffect(() => {
+    if (!unsaved) return;
+    onUnsavedChange({ page, key: buttonKey });
+    return () => onUnsavedChange(null);
+  }, [unsaved, page, buttonKey, onUnsavedChange]);
 
   const commit = (next: DeckButton | null, coalesce?: string) => {
     setDraft(next);

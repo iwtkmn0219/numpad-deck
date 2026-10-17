@@ -18,15 +18,18 @@ interface Props {
   onSelect: (selection: Selection) => void;
   /** 버튼을 끌어 `to` 칸에 놓았다. `to`에 버튼이 있으면 맞바꾸고, 비었으면 옮긴다. */
   onMove: (from: ButtonKeyName, to: ButtonKeyName) => void;
+  /** 버튼을 놓을 수 없는 칸 (패널에서 아직 다 만들지 않은 버튼이 있는 칸: 덮어쓰면 되돌릴 수 없다) */
+  blocked?: ButtonKeyName | null;
 }
 
 /** 실제 넘패드 모양 그리드. 칸을 누르면 오른쪽 패널에서 편집한다. 받침 위에 키캡처럼 그린다. */
-export function KeyGrid({ grid, page, selected, onSelect, onMove }: Props) {
+export function KeyGrid({ grid, page, selected, onSelect, onMove, blocked = null }: Props) {
   const t = useT();
-  const drag = useKeyDrag(grid, page, onMove);
+  const drag = useKeyDrag(page, onMove, blocked);
 
   return (
     <div
+      ref={drag.container}
       className="rounded-[18px] bg-muted p-3.5 select-none"
       onPointerDown={drag.onPointerDown}
       onPointerMove={drag.onPointerMove}
@@ -74,7 +77,6 @@ export function KeyGrid({ grid, page, selected, onSelect, onMove }: Props) {
           return (
             <button
               key={slot.key}
-              ref={(el) => void (el ? drag.cells.current.set(slot.key, el) : drag.cells.current.delete(slot.key))}
               data-key={slot.key}
               // 버튼이 있는 칸만 끌 수 있다 (빈 칸, 패널에서 아직 다 만들지 않은 버튼은 여기에 없다)
               data-draggable={button ? "" : undefined}
@@ -83,12 +85,14 @@ export function KeyGrid({ grid, page, selected, onSelect, onMove }: Props) {
               className={cn(
                 "flex min-w-0 flex-col items-start overflow-hidden rounded-xl px-3 pt-2 pb-[11px] text-left",
                 button
-                  ? "keycap"
+                  ? "keycap touch-none"
                   : "border-[1.5px] border-dashed border-input text-muted-foreground opacity-85 transition hover:bg-white/50 hover:opacity-100",
                 isSelected && "key-selected",
                 // 끄는 중: 원래 칸은 흐리게, 놓을 칸은 테두리와 옅은 파랑
                 drag.active && "cursor-grabbing",
-                isSource && "opacity-40",
+                // 원래 칸은 누른 모양(:active)으로 내려가지 않게
+                isSource &&
+                  "opacity-40 active:transform-none active:shadow-[inset_0_-3px_0_var(--key-edge),0_1px_2px_rgb(31_30_28/0.06)]",
                 isTarget && "bg-selection-soft ring-[3px] ring-selection",
               )}
             >
@@ -162,7 +166,7 @@ function DragGhost({ ghost }: { ghost: Ghost }) {
   return (
     <div
       aria-hidden
-      className="keycap pointer-events-none fixed top-0 left-0 z-50 flex min-w-0 flex-col items-start overflow-hidden rounded-xl px-3 pt-2 pb-[11px] text-left opacity-70 shadow-lg select-none"
+      className="keycap pointer-events-none fixed top-0 left-0 z-50 flex min-w-0 flex-col items-start overflow-hidden rounded-xl px-3 pt-2 pb-[11px] text-left opacity-70 shadow-[inset_0_-3px_0_var(--key-edge),0_8px_20px_rgb(31_30_28/0.18)] transition-none select-none"
       style={{ width: ghost.width, height: ghost.height, transform: `translate(${ghost.x}px, ${ghost.y}px)` }}
     >
       <KeyFace label={ghost.key} button={ghost.button} selected={false} emptyText="" />
@@ -198,8 +202,12 @@ interface DragState {
  * 바뀐 모양에서도 맞는다. 버튼이 있는 칸만 끌 수 있고 버튼 칸에만 놓을 수 있다. 그리드 밖·시스템 키 칸
  * 에 놓거나 Esc면 취소.
  */
-function useKeyDrag(grid: Grid, page: Page, onMove: (from: ButtonKeyName, to: ButtonKeyName) => void) {
-  const cells = useRef(new Map<string, HTMLElement>());
+function useKeyDrag(
+  page: Page,
+  onMove: (from: ButtonKeyName, to: ButtonKeyName) => void,
+  blocked: ButtonKeyName | null,
+) {
+  const container = useRef<HTMLDivElement>(null);
   const [state, setStateRaw] = useState<DragState | null>(null);
   // 포인터 이벤트가 다시 그리기보다 먼저 올 수 있어 최신 값은 ref로도 든다
   const ref = useRef<DragState | null>(null);
@@ -210,21 +218,28 @@ function useKeyDrag(grid: Grid, page: Page, onMove: (from: ButtonKeyName, to: Bu
   /** 끌기를 막 끝냈으면 뒤따르는 클릭(칸 고르기)을 무시한다 */
   const justDragged = useRef(false);
 
-  /** 이 좌표 아래의 버튼 칸. 칸 사이 틈·시스템 키 칸·그리드 밖이면 null. */
+  /** 이 좌표 아래의 놓을 수 있는 버튼 칸. 칸 사이 틈·시스템 키 칸·그리드 밖·놓을 수 없는 칸이면 null. */
   const cellAt = (x: number, y: number): ButtonKeyName | null => {
-    for (const slot of grid.slots) {
-      if (slot.kind !== "button") continue;
-      const r = cells.current.get(slot.key)?.getBoundingClientRect();
-      if (r && x >= r.left && x < r.right && y >= r.top && y < r.bottom) return slot.key;
+    // `data-key`는 버튼 칸에만 있다 (시스템 키 칸에는 없다)
+    for (const el of container.current?.querySelectorAll<HTMLElement>("[data-key]") ?? []) {
+      const r = el.getBoundingClientRect();
+      if (x >= r.left && x < r.right && y >= r.top && y < r.bottom) {
+        const key = el.dataset.key as ButtonKeyName;
+        return key === blocked ? null : key;
+      }
     }
     return null;
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if (e.button !== 0 || ref.current) return;
+    if (e.button !== 0) return;
     const el = (e.target as HTMLElement).closest<HTMLElement>("[data-draggable]");
     const key = el?.dataset.key as ButtonKeyName | undefined;
     if (!el || !key || !page.buttons[key]) return;
+    // 누르는 순간 포인터를 잡는다: 문턱을 넘기 전에 포인터가 그리드를 벗어나도 손 뗌을 놓치지 않는다.
+    // (칸은 안에 누를 것이 없는 버튼 하나라 클릭이 엉뚱한 곳으로 가지 않는다. 탭은 안에 단추가 있어 이렇게 못 한다.)
+    // 남은 상태가 있으면 덮어쓴다.
+    el.setPointerCapture(e.pointerId);
     setState({
       from: key,
       pointerId: e.pointerId,
@@ -243,9 +258,13 @@ function useKeyDrag(grid: Grid, page: Page, onMove: (from: ButtonKeyName, to: Bu
   const onPointerMove = (e: React.PointerEvent) => {
     const s = ref.current;
     if (!s || e.pointerId !== s.pointerId || s.cancelled) return;
+    // 왼쪽 버튼이 눌려 있지 않은데 상태가 남았다면(손 뗌을 놓침) 버린다
+    if ((e.buttons & 1) === 0) {
+      setState(null);
+      return;
+    }
     const started = s.started || Math.hypot(e.clientX - s.startX, e.clientY - s.startY) > DRAG_THRESHOLD;
     if (!started) return;
-    if (!s.started) s.el.setPointerCapture(e.pointerId);
     const over = cellAt(e.clientX, e.clientY);
     setState({ ...s, started, x: e.clientX, y: e.clientY, target: over !== s.from ? over : null });
   };
@@ -290,9 +309,11 @@ function useKeyDrag(grid: Grid, page: Page, onMove: (from: ButtonKeyName, to: Bu
     return () => window.removeEventListener("keydown", onKey, true);
   }, [dragging]);
 
-  // 끄는 사이 그 버튼이 사라졌으면(되돌리기·밖에서 고침 등) 끌기를 버린다
+  // 끄는 사이 그 버튼이 사라졌으면(되돌리기·밖에서 고침 등) 끌기를 취소한다. 상태는 손을 뗄 때까지 남겨
+  // 뒤따르는 클릭이 원래 칸을 고르지 않게 한다.
   useEffect(() => {
-    if (ref.current && !page.buttons[ref.current.from]) setState(null);
+    const s = ref.current;
+    if (s && !s.cancelled && !page.buttons[s.from]) setState({ ...s, cancelled: true, target: null });
   }, [page]);
 
   const active = state?.started && !state.cancelled ? state : null;
@@ -308,5 +329,5 @@ function useKeyDrag(grid: Grid, page: Page, onMove: (from: ButtonKeyName, to: Bu
       }
     : null;
 
-  return { cells, active, ghost, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onClickCapture };
+  return { container, active, ghost, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onClickCapture };
 }

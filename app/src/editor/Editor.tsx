@@ -44,6 +44,8 @@ export function Editor() {
   const { config, status, update, adopt, beginInstall, endInstall, forgetHistory, undo, redo, canUndo, canRedo } = useEditorConfig();
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Selection | null>({ kind: "button", key: "7" });
+  /** 패널에만 있고 아직 저장하지 않은 버튼의 칸 (그 칸에는 끌어 놓을 수 없다) */
+  const [unsaved, setUnsaved] = useState<{ page: number; key: ButtonKeyName } | null>(null);
 
   const [onboarding, setOnboarding] = useState(false);
   const [layoutOpen, setLayoutOpen] = useState(false);
@@ -199,10 +201,11 @@ export function Editor() {
             selected={selected}
             onSelect={setSelected}
             onMove={moveButton}
+            blocked={unsaved?.page === pageIndex ? unsaved.key : null}
           />
         </div>
         <aside className="min-h-0 min-w-0 flex-1 overflow-y-auto rounded-xl border bg-card p-5">
-          <ButtonPanel config={config} page={page} selected={selected} update={update} />
+          <ButtonPanel config={config} page={page} selected={selected} update={update} onUnsavedChange={setUnsaved} />
         </aside>
       </main>
 

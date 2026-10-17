@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { CircleHelp, Globe, LayoutGrid, Redo2, Settings, ShieldCheck, Undo2, X } from "lucide-react";
+import type { ButtonKeyName } from "@/bindings/ButtonKeyName";
 import type { Config } from "@/bindings/Config";
 import type { InstallMode } from "@/bindings/InstallMode";
 import type { Preview } from "@/bindings/Preview";
@@ -43,6 +44,8 @@ export function Editor() {
   const { config, status, update, adopt, beginInstall, endInstall, forgetHistory, undo, redo, canUndo, canRedo } = useEditorConfig();
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Selection | null>({ kind: "button", key: "7" });
+  /** 패널에만 있고 아직 저장하지 않은 버튼의 칸 (그 칸에는 끌어 놓을 수 없다) */
+  const [unsaved, setUnsaved] = useState<{ page: number; key: ButtonKeyName } | null>(null);
 
   const [onboarding, setOnboarding] = useState(false);
   const [layoutOpen, setLayoutOpen] = useState(false);
@@ -121,7 +124,23 @@ export function Editor() {
   }, [page, pageCount]);
 
   if (!config) return null;
-  const current = config.pages[Math.min(page, config.pages.length - 1)];
+  const pageIndex = Math.min(page, config.pages.length - 1);
+  const current = config.pages[pageIndex];
+
+  /** 끌어 놓은 버튼을 옮기거나 맞바꾼다. update 한 번이라 되돌리기 한 번에 원래대로 돌아간다. */
+  const moveButton = (from: ButtonKeyName, to: ButtonKeyName) => {
+    if (from === to || !current.buttons[from]) return;
+    update((c) => {
+      const buttons = c.pages[pageIndex].buttons;
+      const moved = buttons[from]!;
+      const other = buttons[to];
+      if (other) buttons[from] = other;
+      else delete buttons[from];
+      buttons[to] = moved;
+    });
+    // 옮긴 버튼이 계속 선택된 채로 있게 (오른쪽 패널도 그 칸을 따라간다)
+    setSelected({ kind: "button", key: to });
+  };
 
   return (
     <div className="flex h-screen flex-col">
@@ -176,10 +195,17 @@ export function Editor() {
 
       <main className="flex min-h-0 flex-1 gap-6 overflow-auto p-6">
         <div className="w-[480px] shrink-0">
-          <KeyGrid grid={gridFor(config.layout, config.systemKeys)} page={current} selected={selected} onSelect={setSelected} />
+          <KeyGrid
+            grid={gridFor(config.layout, config.systemKeys)}
+            page={current}
+            selected={selected}
+            onSelect={setSelected}
+            onMove={moveButton}
+            blocked={unsaved?.page === pageIndex ? unsaved.key : null}
+          />
         </div>
         <aside className="min-h-0 min-w-0 flex-1 overflow-y-auto rounded-xl border bg-card p-5">
-          <ButtonPanel config={config} page={page} selected={selected} update={update} />
+          <ButtonPanel config={config} page={page} selected={selected} update={update} onUnsavedChange={setUnsaved} />
         </aside>
       </main>
 

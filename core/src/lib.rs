@@ -8,6 +8,7 @@
 //! - [`keys`]: 단축키의 키 이름 ↔ 가상 키 (순수 로직).
 //! - [`presets`]: 프리셋 페이지 (한국어·영어), 첫 실행 기본 설정.
 //! - [`record`]: 단축키 녹화 결과 만들기 (순수 로직).
+//! - [`text_template`]: 문장 자리표시자(`{날짜}` 등) 펼치기 (순수 로직).
 //! - [`action`]: 액션 실행기 (Windows 전용).
 //! - [`hook`]: 저수준 키보드 훅 전용 스레드 (Windows 전용).
 //! - [`inject`]: 서명을 붙인 입력 주입과 자기 입력 판별 (Windows 전용).
@@ -22,6 +23,7 @@ pub mod keys;
 pub mod layout;
 pub mod presets;
 pub mod record;
+pub mod text_template;
 
 #[cfg(windows)]
 pub mod action;

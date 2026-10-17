@@ -104,7 +104,8 @@ export function useEditorConfig() {
    */
   const flush = useCallback(async () => {
     window.clearTimeout(timer.current);
-    const next = pending.current;
+    // 예약된 저장이 없어도 지난 저장이 실패했으면(잠깐 파일이 잠긴 경우 등) 지금 내용을 다시 저장해 본다
+    const next = pending.current ?? (saveFailed.current ? current.current : null);
     pending.current = null;
     if (next) persist(next);
     await inflight.current;

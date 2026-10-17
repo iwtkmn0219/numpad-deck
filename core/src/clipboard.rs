@@ -1,0 +1,364 @@
+//! 클립보드: 문장 붙여넣기용 보관·넣기·되돌리기.
+//!
+//! 순서는 액션 실행 스레드에서 [`snapshot`] → [`put_text_private`] → Ctrl+V →
+//! [`RESTORE_DELAY`] 대기 → [`restore`]다. 넣은 문장과 되돌린 내용에는 기록 제외
+//! 형식을 붙여 Win+V 기록·클라우드 동기화·클립보드 관리자에 남지 않게 한다.
+//!
+//! 클립보드는 창 없이(`OpenClipboard(None)`) 연다. 다른 앱이 잡고 있으면 짧게 다시
+//! 시도한다. 실제 클립보드를 쓰는 함수는 사용자 클립보드를 건드리므로 자동 시험에
+//! 넣지 않고, 판단은 순수 함수로 떼어 시험한다.
+
+use std::sync::OnceLock;
+use std::thread;
+use std::time::Duration;
+
+use windows::core::PCWSTR;
+use windows::Win32::Foundation::{
+    GetLastError, GlobalFree, SetLastError, ERROR_SUCCESS, HANDLE, HGLOBAL,
+};
+use windows::Win32::System::DataExchange::{
+    CloseClipboard, EmptyClipboard, EnumClipboardFormats, GetClipboardData,
+    GetClipboardSequenceNumber, OpenClipboard, RegisterClipboardFormatW, SetClipboardData,
+};
+use windows::Win32::System::Memory::{
+    GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE,
+};
+use windows::Win32::System::Ole::{
+    CF_BITMAP, CF_DSPBITMAP, CF_DSPENHMETAFILE, CF_DSPMETAFILEPICT, CF_DSPTEXT, CF_ENHMETAFILE,
+    CF_GDIOBJFIRST, CF_GDIOBJLAST, CF_METAFILEPICT, CF_OWNERDISPLAY, CF_PALETTE, CF_PRIVATEFIRST,
+    CF_PRIVATELAST, CF_UNICODETEXT,
+};
+
+/// Ctrl+V를 보낸 뒤 되돌리기까지 기다리는 시간. 대상 앱이 클립보드를 늦게 읽을 수
+/// 있어서 기다린다. 체크리스트 결과로 조정한다.
+pub const RESTORE_DELAY: Duration = Duration::from_millis(400);
+
+/// 보관할 수 있는 합계 바이트. 넘으면 보관하지 않고 직접 입력으로 대신 보낸다.
+const SNAPSHOT_LIMIT: usize = 32 * 1024 * 1024;
+
+/// `OpenClipboard` 재시도 횟수와 간격 (10ms × 10회).
+const OPEN_TRIES: u32 = 10;
+const OPEN_RETRY_WAIT: Duration = Duration::from_millis(10);
+
+/// 기록 제외 형식 이름. 값은 모두 DWORD 0이다.
+/// `ExcludeClipboardContentFromMonitorProcessing`은 내용과 무관하게 있기만 하면 되고,
+/// 나머지 둘은 0이 "허용 안 함"이다.
+const PRIVATE_FORMAT_NAMES: [&str; 3] = [
+    "ExcludeClipboardContentFromMonitorProcessing",
+    "CanIncludeInClipboardHistory",
+    "CanUploadToCloudClipboard",
+];
+const PRIVATE_FORMAT_VALUE: [u8; 4] = 0u32.to_le_bytes();
+
+/// 보관해 둔 클립보드 내용. `HGLOBAL` 기반 형식의 바이트만 담는다.
+/// 비어 있으면 보관할 때 클립보드가 비어 있었던 것이다.
+pub struct Snapshot {
+    formats: Vec<(u32, Vec<u8>)>,
+}
+
+/// 클립보드의 글자(`CF_UNICODETEXT`)를 읽는다. `\r\n`은 `\n`으로 바꾼다.
+/// 열기 실패·글자 없음(비었음, 그림만 있음)·빈 글자면 `None`.
+pub fn read_text() -> Option<String> {
+    let _clipboard = open().ok()?;
+    let handle = unsafe { GetClipboardData(CF_UNICODETEXT.0 as u32) }.ok()?;
+    let locked = Locked::new(HGLOBAL(handle.0)).ok()?;
+    // 글자는 NUL에서 끝난다. 블록이 요청 크기보다 클 수 있어 GlobalSize만 믿지 않는다.
+    let units: Vec<u16> = locked
+        .bytes()
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|&b| u16::from_le_bytes(b))
+        .take_while(|&u| u != 0)
+        .collect();
+    let text = String::from_utf16_lossy(&units).replace("\r\n", "\n");
+    (!text.is_empty()).then_some(text)
+}
+
+/// 지금 클립보드 내용을 보관한다. 합계가 32MiB를 넘거나 한 형식이라도 읽지 못하면
+/// `Err` — 일부만 보관하면 되돌릴 때 사용자 클립보드를 잃기 때문이다.
+pub fn snapshot() -> Result<Snapshot, String> {
+    let private = private_formats()?;
+    let _clipboard = open()?;
+    let mut formats = Vec::new();
+    let mut total = 0usize;
+    let mut format = 0u32;
+    loop {
+        // 끝에 닿았을 때와 실패를 GetLastError로 가린다. 이전 값이 남지 않게 먼저 지운다.
+        unsafe { SetLastError(ERROR_SUCCESS) };
+        format = unsafe { EnumClipboardFormats(format) };
+        if format == 0 {
+            let error = unsafe { GetLastError() };
+            if error != ERROR_SUCCESS {
+                return Err(format!("EnumClipboardFormats: {error:?}"));
+            }
+            break;
+        }
+        // 기록 제외 형식은 되돌릴 때 새로 붙인다.
+        if should_skip_format(format) || private.contains(&format) {
+            continue;
+        }
+        let handle = unsafe { GetClipboardData(format) }
+            .map_err(|e| format!("GetClipboardData({format}): {e}"))?;
+        let locked =
+            Locked::new(HGLOBAL(handle.0)).map_err(|e| format!("GlobalLock({format}): {e}"))?;
+        let bytes = locked.bytes();
+        total = total.saturating_add(bytes.len());
+        if !within_limit(total) {
+            return Err(format!("clipboard larger than {SNAPSHOT_LIMIT} bytes"));
+        }
+        formats.push((format, bytes.to_vec()));
+    }
+    Ok(Snapshot { formats })
+}
+
+/// 문장을 클립보드에 넣는다(줄바꿈은 `\r\n`). 기록 제외 형식을 같이 넣고, 닫은 뒤의
+/// 클립보드 순번을 돌려준다. [`restore`]에 그대로 넘긴다.
+pub fn put_text_private(text: &str) -> Result<u32, String> {
+    let private = private_formats()?;
+    let mut bytes: Vec<u8> = to_crlf(text)
+        .encode_utf16()
+        .flat_map(u16::to_le_bytes)
+        .collect();
+    // CF_UNICODETEXT는 NUL로 끝나야 한다.
+    bytes.extend_from_slice(&[0, 0]);
+    {
+        let _clipboard = open()?;
+        empty()?;
+        set_bytes(CF_UNICODETEXT.0 as u32, &bytes)?;
+        set_private(&private)?;
+    }
+    // 닫은 뒤에 읽는다. 닫은 다음부터는 다른 앱이 바꿔야만 순번이 바뀐다.
+    Ok(unsafe { GetClipboardSequenceNumber() })
+}
+
+/// 보관한 내용을 되돌린다. 순번이 `expected_seq`와 다르면 그사이 사용자나 다른 앱이
+/// 클립보드를 바꾼 것이므로 아무것도 하지 않고 `Ok(false)`. 빈 스냅숏이면 비우기만 한다.
+pub fn restore(snapshot: Snapshot, expected_seq: u32) -> Result<bool, String> {
+    if !should_restore(expected_seq, unsafe { GetClipboardSequenceNumber() }) {
+        return Ok(false);
+    }
+    let private = private_formats()?;
+    let _clipboard = open()?;
+    // 확인과 열기 사이에 바뀌었을 수 있다. 열어 둔 동안에는 아무도 못 바꾸므로 한 번 더 본다.
+    if !should_restore(expected_seq, unsafe { GetClipboardSequenceNumber() }) {
+        return Ok(false);
+    }
+    empty()?;
+    if snapshot.formats.is_empty() {
+        return Ok(true);
+    }
+    // 한 형식이 실패해도 나머지는 되살린다. 오류는 처음 것만 알린다.
+    let mut first_error = None;
+    for (format, bytes) in &snapshot.formats {
+        if let Err(e) = set_bytes(*format, bytes) {
+            first_error.get_or_insert(e);
+        }
+    }
+    // 이미 기록에 있던 내용이 한 번 더 쌓이지 않게 되돌린 내용에도 붙인다.
+    if let Err(e) = set_private(&private) {
+        first_error.get_or_insert(e);
+    }
+    match first_error {
+        None => Ok(true),
+        Some(e) => Err(e),
+    }
+}
+
+/// 보관하지 않는 형식. GDI 핸들 형식(`CF_BITMAP` 등)과 표시 전용 형식(`CF_OWNERDISPLAY`,
+/// `CF_DSP*`)은 바이트로 복사할 수 있는 `HGLOBAL`이 아니다. 그림은 `CF_DIB`로 되살아난다.
+/// GDI 객체 범위와 앱 전용 범위(`CF_GDIOBJ*`·`CF_PRIVATE*`)도 핸들 종류를 알 수 없어 건너뛴다.
+fn should_skip_format(format: u32) -> bool {
+    let skipped = [
+        CF_BITMAP,
+        CF_ENHMETAFILE,
+        CF_PALETTE,
+        CF_METAFILEPICT,
+        CF_OWNERDISPLAY,
+        CF_DSPTEXT,
+        CF_DSPBITMAP,
+        CF_DSPMETAFILEPICT,
+        CF_DSPENHMETAFILE,
+    ];
+    let in_range = |first: u16, last: u16| (first as u32..=last as u32).contains(&format);
+    skipped.iter().any(|f| f.0 as u32 == format)
+        || in_range(CF_PRIVATEFIRST.0, CF_PRIVATELAST.0)
+        || in_range(CF_GDIOBJFIRST.0, CF_GDIOBJLAST.0)
+}
+
+/// 보관 합계가 한도 안인지.
+fn within_limit(total: usize) -> bool {
+    total <= SNAPSHOT_LIMIT
+}
+
+/// 되돌려도 되는지: 넣은 뒤 순번이 그대로일 때만.
+fn should_restore(expected: u32, current: u32) -> bool {
+    expected == current
+}
+
+/// 줄바꿈을 `\r\n`으로. 이미 `\r\n`인 것은 그대로 둔다.
+fn to_crlf(text: &str) -> String {
+    text.replace("\r\n", "\n").replace('\n', "\r\n")
+}
+
+/// 열린 클립보드. 놓을 때 닫는다 — 어느 경로로 나가든 `CloseClipboard`가 불린다.
+struct Clipboard;
+
+impl Drop for Clipboard {
+    fn drop(&mut self) {
+        let _ = unsafe { CloseClipboard() };
+    }
+}
+
+/// 창 없이 연다. 다른 앱이 잡고 있으면 10ms 간격으로 10번까지 시도한다.
+fn open() -> Result<Clipboard, String> {
+    let mut last = None;
+    for attempt in 0..OPEN_TRIES {
+        if attempt > 0 {
+            thread::sleep(OPEN_RETRY_WAIT);
+        }
+        match unsafe { OpenClipboard(None) } {
+            Ok(()) => return Ok(Clipboard),
+            Err(e) => last = Some(e),
+        }
+    }
+    Err(format!(
+        "OpenClipboard: {}",
+        last.map(|e| e.to_string()).unwrap_or_default()
+    ))
+}
+
+fn empty() -> Result<(), String> {
+    unsafe { EmptyClipboard() }.map_err(|e| format!("EmptyClipboard: {e}"))
+}
+
+/// 잠근 `HGLOBAL`. 놓을 때 푼다 — 잠금과 풀기가 늘 짝을 이룬다.
+struct Locked {
+    handle: HGLOBAL,
+    ptr: *mut u8,
+    len: usize,
+}
+
+impl Locked {
+    fn new(handle: HGLOBAL) -> windows::core::Result<Self> {
+        // 크기는 블록 자체에서 얻는다. 0은 실패이거나 버려진 블록이라 읽을 수 없다.
+        let len = unsafe { GlobalSize(handle) };
+        if len == 0 {
+            return Err(windows::core::Error::from_thread());
+        }
+        let ptr = unsafe { GlobalLock(handle) } as *mut u8;
+        if ptr.is_null() {
+            return Err(windows::core::Error::from_thread());
+        }
+        Ok(Self { handle, ptr, len })
+    }
+
+    fn bytes(&self) -> &[u8] {
+        // 잠근 동안 ptr부터 len 바이트가 유효하다.
+        unsafe { std::slice::from_raw_parts(self.ptr, self.len) }
+    }
+
+    fn bytes_mut(&mut self) -> &mut [u8] {
+        unsafe { std::slice::from_raw_parts_mut(self.ptr, self.len) }
+    }
+}
+
+impl Drop for Locked {
+    fn drop(&mut self) {
+        // 마지막 풀기는 0(실패 모양)을 돌려주므로 결과는 보지 않는다.
+        let _ = unsafe { GlobalUnlock(self.handle) };
+    }
+}
+
+/// 열린 클립보드에 한 형식을 넣는다. 성공하면 메모리는 시스템 소유가 되고,
+/// 실패했을 때만 직접 푼다.
+fn set_bytes(format: u32, bytes: &[u8]) -> Result<(), String> {
+    // GMEM_MOVEABLE: 클립보드에 넣는 메모리는 옮길 수 있어야 한다. 0바이트 블록은 버려진
+    // 블록이 되므로 최소 1바이트를 잡는다.
+    let handle = unsafe { GlobalAlloc(GMEM_MOVEABLE, bytes.len().max(1)) }
+        .map_err(|e| format!("GlobalAlloc: {e}"))?;
+    match Locked::new(handle) {
+        Ok(mut locked) => {
+            // 블록이 요청보다 클 수 있다. 남는 부분은 0으로 채운다.
+            let dest = locked.bytes_mut();
+            dest[..bytes.len()].copy_from_slice(bytes);
+            dest[bytes.len()..].fill(0);
+        }
+        Err(e) => {
+            let _ = unsafe { GlobalFree(Some(handle)) };
+            return Err(format!("GlobalLock: {e}"));
+        }
+    }
+    // 잠금을 푼 뒤에 넘긴다.
+    match unsafe { SetClipboardData(format, Some(HANDLE(handle.0))) } {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            // 실패하면 시스템이 가져가지 않았으므로 우리가 푼다. GlobalFree는 성공하면
+            // NULL을 돌려줘 windows-rs에서는 Err 모양이므로 결과는 보지 않는다.
+            let _ = unsafe { GlobalFree(Some(handle)) };
+            Err(format!("SetClipboardData({format}): {e}"))
+        }
+    }
+}
+
+/// 기록 제외 형식 셋을 넣는다.
+fn set_private(private: &[u32; 3]) -> Result<(), String> {
+    for &format in private {
+        set_bytes(format, &PRIVATE_FORMAT_VALUE)?;
+    }
+    Ok(())
+}
+
+/// 기록 제외 형식 번호. 처음 한 번 등록해 둔다. 등록에 실패하면 기록에 남을 수 있으므로
+/// `Err` — 부르는 쪽은 직접 입력으로 대신 보낸다.
+fn private_formats() -> Result<[u32; 3], String> {
+    static FORMATS: OnceLock<[u32; 3]> = OnceLock::new();
+    let formats = *FORMATS.get_or_init(|| {
+        PRIVATE_FORMAT_NAMES.map(|name| {
+            let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
+            unsafe { RegisterClipboardFormatW(PCWSTR(wide.as_ptr())) }
+        })
+    });
+    if formats.contains(&0) {
+        return Err("RegisterClipboardFormatW failed".into());
+    }
+    Ok(formats)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use windows::Win32::System::Ole::{CF_DIB, CF_HDROP};
+
+    #[test]
+    fn skips_gdi_handle_formats() {
+        assert!(should_skip_format(CF_BITMAP.0 as u32));
+        assert!(should_skip_format(CF_ENHMETAFILE.0 as u32));
+        assert!(should_skip_format(CF_OWNERDISPLAY.0 as u32));
+        assert!(should_skip_format(CF_DSPTEXT.0 as u32));
+        assert!(!should_skip_format(CF_UNICODETEXT.0 as u32));
+        assert!(!should_skip_format(CF_DIB.0 as u32));
+        assert!(!should_skip_format(CF_HDROP.0 as u32));
+        // 등록 형식(HTML·RTF 등)은 0xC000 이상이고 HGLOBAL이다.
+        assert!(!should_skip_format(0xC0FF));
+    }
+
+    #[test]
+    fn limit_is_32_mib() {
+        assert!(within_limit(32 * 1024 * 1024));
+        assert!(!within_limit(32 * 1024 * 1024 + 1));
+    }
+
+    #[test]
+    fn restores_only_when_sequence_matches() {
+        assert!(should_restore(5, 5));
+        assert!(!should_restore(5, 6));
+    }
+
+    #[test]
+    fn converts_newlines_to_crlf() {
+        assert_eq!(to_crlf("a\nb"), "a\r\nb");
+        assert_eq!(to_crlf("a\r\nb"), "a\r\nb");
+        assert_eq!(to_crlf("a\n\nb\r\n"), "a\r\n\r\nb\r\n");
+    }
+}

@@ -76,6 +76,27 @@ pub fn text(text: &str) -> windows::core::Result<()> {
     send(&inputs)
 }
 
+/// 붙여넣기(Ctrl+V)를 보낸다. 사용자가 누르고 있던 보조 키는 먼저 뗀다. 그대로 두면
+/// Shift가 섞여 `Ctrl+Shift+V`(서식 없이 붙여넣기 등 다른 동작)가 된다.
+pub fn paste_shortcut() -> windows::core::Result<()> {
+    let ctrl = HotkeyKey {
+        vk: 0xA2, // VK_LCONTROL
+        extended: false,
+    };
+    let v = HotkeyKey {
+        vk: 0x56, // 'V'
+        extended: false,
+    };
+    let mut inputs = release_held_modifiers();
+    inputs.extend([
+        key_input(ctrl, false),
+        key_input(v, false),
+        key_input(v, true),
+        key_input(ctrl, true),
+    ]);
+    send(&inputs)
+}
+
 /// 지금 눌려 있는 보조 키를 떼는 입력. Alt·Win이 있으면 마스크 키를 앞에 넣는다.
 fn release_held_modifiers() -> Vec<INPUT> {
     let held: Vec<u16> = MODIFIER_VKS

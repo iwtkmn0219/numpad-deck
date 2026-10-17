@@ -10,6 +10,7 @@
 //! - [`record`]: 단축키 녹화 결과 만들기 (순수 로직).
 //! - [`text_template`]: 문장 자리표시자(`{날짜}` 등) 펼치기 (순수 로직).
 //! - [`action`]: 액션 실행기 (Windows 전용).
+//! - [`clipboard`]: 문장 붙여넣기용 클립보드 보관·기록 제외 넣기·되돌리기 (Windows 전용).
 //! - [`hook`]: 저수준 키보드 훅 전용 스레드 (Windows 전용).
 //! - [`inject`]: 서명을 붙인 입력 주입과 자기 입력 판별 (Windows 전용).
 //! - [`share`]: 페이지 공유 파일(.npdeck) 형식과 경로 이식성 (Windows 전용).
@@ -27,6 +28,8 @@ pub mod text_template;
 
 #[cfg(windows)]
 pub mod action;
+#[cfg(windows)]
+pub mod clipboard;
 #[cfg(windows)]
 pub mod hook;
 #[cfg(windows)]

@@ -8,8 +8,10 @@
 // 규칙
 // - 두 언어 이름을 모두 알아듣는다. 출력 언어는 앱 언어(`lang`)를 따르고 이름의 언어와 무관하다.
 // - 이름은 정확히 맞아야 한다(공백·대소문자 허용 안 함, 영어 이름은 소문자만).
-// - 표에 없는 `{...}`와 짝 없는 `{`·`}`는 그대로 둔다. `{{` → `{`, `}}` → `}`.
-// - `{`를 만나면 다음 `}`까지가 표의 이름일 때만 바꾸고, 아니면 `{`만 글자로 남기고 다음 글자부터 다시 본다.
+// - 표에 없는 `{...}`와 짝 없는 `{`·`}`는 그대로 둔다.
+// - `{{` + 표의 이름 + `}}` 한 덩어리만 `{이름}` 글자로 줄어든다(펼치지 않는다). 다른 `{{`·`}}`는 그대로다.
+//   그래서 표의 이름이 없는 문장은 한 글자도 바뀌지 않는다(코어 시험 `text_without_table_names_is_unchanged`).
+// - `{`에서 왼쪽부터 본다: ① `{{이름}}` 줄이기 ② `{이름}` 펼치기 ③ 아니면 `{`만 글자로 남기고 다음 글자부터 다시 본다.
 //
 // 시험 사례 (SAT = 2026-10-17 토요일 14:05, WED = 2026-03-04 수요일 09:07, 요일 0=일요일)
 //   입력                         시각  앱 언어  출력
@@ -34,13 +36,18 @@
 //   {weekday}                    SAT   ko       토요일
 //   {날짜:긴}                    SAT   en       October 17, 2026
 //   {{날짜}}                     SAT   ko       {날짜}
-//   a}}b                         SAT   ko       a}b
-//   {{                           SAT   ko       {
+//   {{date:long}}                SAT   en       {date:long}
+//   a {{시간}} b {시간}          SAT   ko       a {시간} b 14:05
+//   {{ }} }}} a}}b {{x}} {{ 날짜}} {"a":{"b":1}}   SAT  ko  입력 그대로 (각각)
+//   {{날짜}                      SAT   ko       {2026-10-17
+//   {날짜}}                      SAT   ko       2026-10-17}
+//   {{{시간}}                    SAT   ko       {{시간}
+//   {{{날짜}}}                   SAT   ko       {{날짜}}   (왼쪽 `{` 글자, 안쪽 `{{날짜}}`가 `{날짜}`, 오른쪽 `}` 글자)
 //   {^_^} {이름} {Date} { 날짜} {날짜   SAT  ko  입력 그대로 (모르는 이름·짝 없는 괄호)
 //   { {날짜}                     SAT   ko       { 2026-10-17
 //   {a{시간}                     SAT   ko       {a14:05
 //   안녕 {날짜} {시간}!          SAT   ko       안녕 2026-10-17 14:05!
-//   hasPlaceholders: {시간} 참 · a {clipboard} b 참 · {{시간}} 거짓 · {x} 거짓 · (빈 문장) 거짓
+//   hasPlaceholders: {시간} 참 · {날짜} 참 · a {clipboard} b 참 · {{날짜}} {날짜} 참 · {{시간}} 거짓 · {{x}} 거짓 · {x} 거짓 · {{{날짜}}} 거짓 · (빈 문장) 거짓
 
 export type PlaceholderId = "date" | "dateLong" | "dateShort" | "time" | "weekday" | "clipboard";
 
@@ -99,27 +106,32 @@ function parse(text: string): Part[] {
   let buf = "";
   let i = 0;
   while (i < text.length) {
-    if (text.startsWith("{{", i)) {
-      buf += "{";
-      i += 2;
-    } else if (text.startsWith("}}", i)) {
-      buf += "}";
-      i += 2;
-    } else if (text[i] === "{") {
-      const end = text.indexOf("}", i);
-      const place = end < 0 ? undefined : lookup(text.slice(i + 1, end));
-      if (place !== undefined) {
-        if (buf) parts.push({ text: buf });
-        buf = "";
-        parts.push({ place });
-        i = end + 1;
-      } else {
-        buf += "{";
-        i += 1;
-      }
-    } else {
+    if (text[i] !== "{") {
       // 문자 단위가 아니라 UTF-16 단위로 옮겨도 된다: `{`·`}`는 서로게이트 쌍과 겹치지 않는다
       buf += text[i];
+      i += 1;
+      continue;
+    }
+    // ① `{{이름}}`
+    if (text.startsWith("{{", i)) {
+      const end = text.indexOf("}", i + 2);
+      if (end >= 0 && text.startsWith("}}", end) && lookup(text.slice(i + 2, end)) !== undefined) {
+        buf += `{${text.slice(i + 2, end)}}`;
+        i = end + 2;
+        continue;
+      }
+    }
+    // ② `{이름}`
+    const end = text.indexOf("}", i);
+    const place = end < 0 ? undefined : lookup(text.slice(i + 1, end));
+    if (place !== undefined) {
+      if (buf) parts.push({ text: buf });
+      buf = "";
+      parts.push({ place });
+      i = end + 1;
+    } else {
+      // ③ 그대로
+      buf += "{";
       i += 1;
     }
   }
@@ -127,7 +139,7 @@ function parse(text: string): Part[] {
   return parts;
 }
 
-/** 표의 이름이 하나라도 있으면 true. `{{`로 막은 것은 세지 않는다. */
+/** 표의 이름이 `{이름}` 꼴로 하나라도 있으면 true. `{{이름}}`으로 막은 것은 세지 않는다. */
 export function hasPlaceholders(text: string): boolean {
   return parse(text).some((p) => "place" in p);
 }

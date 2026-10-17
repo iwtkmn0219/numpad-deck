@@ -1,7 +1,9 @@
 //! 문장 액션의 자리표시자(`{날짜}`, `{시간}`, `{클립보드}` …) 펼치기.
 //!
 //! 버튼을 누르는 순간의 값으로 바꾼다. 두 언어 이름을 모두 알아듣고, 출력 언어는 앱 언어를 따른다.
-//! 표에 없는 `{...}`와 짝 없는 괄호는 그대로 둔다. `{{` → `{`, `}}` → `}`.
+//! 표에 없는 `{...}`와 짝 없는 괄호는 그대로 둔다. 이름을 글자 그대로 쓰려면 `{{날짜}}`처럼 겹쳐 쓴다
+//! (`{{` + 표의 이름 + `}}` 한 덩어리만 `{날짜}`로 줄고, 다른 `{{`·`}}`는 그대로다).
+//! 그래서 표의 이름이 없는 기존 문장은 한 글자도 바뀌지 않는다.
 //! Windows 의존 없음: 현재 시각과 클립보드는 부르는 쪽이 넘긴다.
 
 use crate::i18n::Lang;
@@ -79,38 +81,52 @@ enum Part {
 }
 
 /// 한 번 훑으며 글자와 자리표시자로 나눈다.
+///
+/// 글자 하나씩 보며 `{`에서만 다음을 본다(가장 왼쪽부터, 앞의 것이 먼저).
+/// 1. `{{` + 표의 이름 + `}}` 한 덩어리: `{이름}` 글자로 줄인다(펼치지 않는다).
+/// 2. `{` + 표의 이름 + `}`: 자리표시자.
+/// 3. 그 밖: `{` 글자 하나만 그대로 두고 다음 글자부터 다시 본다.
+///
+/// `}`와 1번 밖의 `{{`·`}}`는 건드리지 않는다. 그래서 표의 이름이 없는 문장은 한 글자도 바뀌지 않는다.
 fn parse(text: &str) -> Vec<Part> {
     let mut parts = Vec::new();
     let mut buf = String::new();
     let mut rest = text;
     while let Some(c) = rest.chars().next() {
-        if rest.starts_with("{{") {
-            buf.push('{');
-            rest = &rest[2..];
-        } else if rest.starts_with("}}") {
-            buf.push('}');
-            rest = &rest[2..];
-        } else if c == '{' {
-            // 다음 `}`까지가 표의 이름이면 바꾸고, 아니면 `{`만 그대로 두고 다음 글자부터 다시 본다.
-            let found = rest
-                .find('}')
-                .and_then(|end| lookup(&rest[1..end]).map(|p| (p, end)));
-            match found {
-                Some((p, end)) => {
-                    if !buf.is_empty() {
-                        parts.push(Part::Text(std::mem::take(&mut buf)));
-                    }
-                    parts.push(Part::Place(p));
-                    rest = &rest[end + 1..];
-                }
-                None => {
-                    buf.push('{');
-                    rest = &rest[1..];
-                }
-            }
-        } else {
+        if c != '{' {
             buf.push(c);
             rest = &rest[c.len_utf8()..];
+            continue;
+        }
+        // 1. `{{이름}}`
+        if let Some(inner) = rest.strip_prefix("{{") {
+            if let Some(end) = inner.find('}') {
+                if inner[end..].starts_with("}}") && lookup(&inner[..end]).is_some() {
+                    buf.push('{');
+                    buf.push_str(&inner[..end]);
+                    buf.push('}');
+                    rest = &inner[end + 2..];
+                    continue;
+                }
+            }
+        }
+        // 2. `{이름}`
+        let found = rest
+            .find('}')
+            .and_then(|end| lookup(&rest[1..end]).map(|p| (p, end)));
+        match found {
+            Some((p, end)) => {
+                if !buf.is_empty() {
+                    parts.push(Part::Text(std::mem::take(&mut buf)));
+                }
+                parts.push(Part::Place(p));
+                rest = &rest[end + 1..];
+            }
+            // 3. 그대로
+            None => {
+                buf.push('{');
+                rest = &rest[1..];
+            }
         }
     }
     if !buf.is_empty() {
@@ -119,7 +135,7 @@ fn parse(text: &str) -> Vec<Part> {
     parts
 }
 
-/// 표의 이름이 하나라도 있으면 true. `{{`로 막은 것은 세지 않는다.
+/// 표의 이름이 `{이름}` 꼴로 하나라도 있으면 true. `{{이름}}`으로 막은 것은 세지 않는다.
 pub fn has_placeholders(text: &str) -> bool {
     parse(text).iter().any(|p| matches!(p, Part::Place(_)))
 }
@@ -250,13 +266,85 @@ mod tests {
     }
 
     #[test]
-    fn escaped_braces() {
+    fn escaped_placeholder_names_collapse() {
+        // `{{` + 표의 이름 + `}}` 한 덩어리만 `{이름}` 글자로 줄어든다
         assert_eq!(ex("{{날짜}}", &SAT, Lang::Ko), "{날짜}");
-        assert_eq!(ex("a}}b", &SAT, Lang::Ko), "a}b");
-        assert_eq!(ex("{{", &SAT, Lang::Ko), "{");
-        // 이스케이프와 자리표시자가 이어질 때: 왼쪽부터 `{{`·`}}`를 먼저 짝짓는다
-        assert_eq!(ex("{{{날짜}}}", &SAT, Lang::Ko), "{2026-10-17}");
+        assert_eq!(ex("{{date:long}}", &SAT, Lang::En), "{date:long}");
+        assert_eq!(
+            ex("a {{시간}} b {시간}", &SAT, Lang::Ko),
+            "a {시간} b 14:05"
+        );
+    }
+
+    #[test]
+    fn other_double_braces_stay_literal() {
+        for s in [
+            "{{",
+            "}}",
+            "}}}",
+            "a}}b",
+            "{{x}}",
+            "{{ 날짜}}",
+            "{\"a\":{\"b\":1}}",
+        ] {
+            assert_eq!(ex(s, &SAT, Lang::Ko), s, "{s}");
+        }
+    }
+
+    #[test]
+    fn single_placeholder_inside_unmatched_double_braces() {
+        assert_eq!(ex("{{날짜}", &SAT, Lang::Ko), "{2026-10-17");
         assert_eq!(ex("{날짜}}", &SAT, Lang::Ko), "2026-10-17}");
+        assert_eq!(ex("{{{시간}}", &SAT, Lang::Ko), "{{시간}");
+    }
+
+    /// `{{{날짜}}}`: 왼쪽 `{`는 짝이 없어 글자로 남고, 안쪽 `{{날짜}}`가 `{날짜}`로 줄고,
+    /// 오른쪽 `}`도 글자로 남는다. 그래서 `{{날짜}}` 그대로다(펼치지 않는다).
+    #[test]
+    fn triple_braces_pinned() {
+        assert_eq!(ex("{{{날짜}}}", &SAT, Lang::Ko), "{{날짜}}");
+        assert!(!has_placeholders("{{{날짜}}}"));
+    }
+
+    /// 표의 이름이 하나도 없는 문장(`{이름}`·`{{이름}}` 두 꼴 모두)은 한 글자도 바뀌지 않는다.
+    #[test]
+    fn text_without_table_names_is_unchanged() {
+        let cases = [
+            "",
+            "plain text",
+            "{\"a\":{\"b\":1}}",
+            "{\"a\": [1, 2, {\"b\": {\"c\": 3}}]}",
+            "a}}b",
+            "{{x}}",
+            "{{",
+            "}}",
+            "}}}",
+            "{{{",
+            "{",
+            "}",
+            "{}",
+            "{{}}",
+            "{^_^}",
+            "{이름}",
+            "{ 날짜}",
+            "{날짜 }",
+            "{Date}",
+            "{DATE}",
+            "{TIME}",
+            "{날짜:}",
+            "{날짜",
+            "날짜}",
+            "{{ date }}",
+            "function f() { return {a: 1}; }",
+            "한글 {{이름}} 😀 {x} }}😀{{ a
+b",
+            "😀{😀}😀}}{{😀",
+        ];
+        for s in cases {
+            assert_eq!(ex(s, &SAT, Lang::Ko), s, "ko {s:?}");
+            assert_eq!(ex(s, &WED, Lang::En), s, "en {s:?}");
+            assert!(!has_placeholders(s), "{s:?}");
+        }
     }
 
     #[test]
@@ -320,6 +408,9 @@ mod tests {
         assert!(has_placeholders("{시간}"));
         assert!(has_placeholders("a {clipboard} b"));
         assert!(!has_placeholders("{{시간}}"));
+        assert!(!has_placeholders("{{x}}"));
+        assert!(has_placeholders("{날짜}"));
+        assert!(has_placeholders("{{날짜}} {날짜}"));
         assert!(!has_placeholders("{x}"));
         assert!(!has_placeholders(""));
     }

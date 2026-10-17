@@ -254,6 +254,9 @@ mod tests {
         assert_eq!(ex("{{날짜}}", &SAT, Lang::Ko), "{날짜}");
         assert_eq!(ex("a}}b", &SAT, Lang::Ko), "a}b");
         assert_eq!(ex("{{", &SAT, Lang::Ko), "{");
+        // 이스케이프와 자리표시자가 이어질 때: 왼쪽부터 `{{`·`}}`를 먼저 짝짓는다
+        assert_eq!(ex("{{{날짜}}}", &SAT, Lang::Ko), "{2026-10-17}");
+        assert_eq!(ex("{날짜}}", &SAT, Lang::Ko), "2026-10-17}");
     }
 
     #[test]

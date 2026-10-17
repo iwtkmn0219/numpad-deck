@@ -117,6 +117,20 @@ pub fn snapshot() -> Result<Snapshot, String> {
     Ok(Snapshot { formats })
 }
 
+/// [`put_text_private`] 실패. 클립보드를 이미 비웠는지 함께 알려 준다.
+#[derive(Debug)]
+pub struct PutError {
+    /// true면 클립보드를 비웠으므로 보관한 내용을 되돌려야 한다.
+    pub emptied: bool,
+    pub msg: String,
+}
+
+impl std::fmt::Display for PutError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.msg)
+    }
+}
+
 /// 지금 클립보드 순번.
 pub fn sequence() -> u32 {
     unsafe { GetClipboardSequenceNumber() }
@@ -125,10 +139,15 @@ pub fn sequence() -> u32 {
 /// 문장을 클립보드에 넣는다(줄바꿈은 `\r\n`). 기록 제외 형식을 같이 넣고, 닫은 뒤의
 /// 클립보드 순번을 돌려준다. [`restore`]에 그대로 넘긴다.
 ///
-/// `Err`이면 클립보드가 이미 비워졌을 수 있다(열기 전에 실패했으면 그대로다). 부르는 쪽은
-/// 이때도 `restore(snapshot, sequence())`로 보관한 내용을 되돌려야 한다.
-pub fn put_text_private(text: &str) -> Result<u32, String> {
-    let private = private_formats()?;
+/// `Err`이면 [`PutError::emptied`]로 클립보드를 비웠는지 알 수 있다. 비웠다면 부르는 쪽이
+/// `restore(snapshot, sequence())`로 보관한 내용을 되돌려야 하고, 비우지 않았다면(열기 전에
+/// 실패) 클립보드는 그대로이므로 되돌리지 않아야 한다(OLE·지연 렌더링 형식이 사라진다).
+pub fn put_text_private(text: &str) -> Result<u32, PutError> {
+    let untouched = |msg| PutError {
+        emptied: false,
+        msg,
+    };
+    let private = private_formats().map_err(untouched)?;
     let mut bytes: Vec<u8> = to_crlf(text)
         .encode_utf16()
         .flat_map(u16::to_le_bytes)
@@ -136,15 +155,16 @@ pub fn put_text_private(text: &str) -> Result<u32, String> {
     // CF_UNICODETEXT는 NUL로 끝나야 한다.
     bytes.extend_from_slice(&[0, 0]);
     {
-        let _clipboard = open()?;
-        empty()?;
+        let _clipboard = open().map_err(untouched)?;
+        // 비우기가 실패해도 일부만 지워졌을 수 있어 비운 것으로 본다.
+        empty().map_err(|msg| PutError { emptied: true, msg })?;
         // 기록 제외 형식을 먼저 넣는다. 하나라도 실패하면 다시 비워서, 표시 없는 문장이
         // 닫을 때 그대로 공개되지 않게 한다.
         let result =
             set_private(&private).and_then(|()| set_bytes(CF_UNICODETEXT.0 as u32, &bytes));
-        if let Err(e) = result {
+        if let Err(msg) = result {
             let _ = empty();
-            return Err(e);
+            return Err(PutError { emptied: true, msg });
         }
     }
     // 닫은 뒤에 읽는다. 닫은 다음부터는 다른 앱이 바꿔야만 순번이 바뀐다.

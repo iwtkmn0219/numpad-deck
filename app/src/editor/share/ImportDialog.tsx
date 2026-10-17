@@ -106,7 +106,7 @@ export function ImportDialog({ preview, config, onClose, beforeInstall, endInsta
           </p>
         )}
 
-        <div className="flex min-h-0 flex-1 gap-4 overflow-y-auto">
+        <div className="-m-1 flex min-h-0 flex-1 gap-4 overflow-y-auto p-1">
           <div className="w-52 shrink-0 space-y-1">
             <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground">
               <input
@@ -117,7 +117,7 @@ export function ImportDialog({ preview, config, onClose, beforeInstall, endInsta
               />
               {t.import.selectAll}
             </label>
-            <ul className="max-h-[420px] space-y-1 overflow-y-auto">
+            <ul className="space-y-1">
               {preview.pages.map((p, i) => (
                 <li
                   key={i}
@@ -277,7 +277,7 @@ function ButtonList({ page, notes }: { page: Page; notes: ButtonNote[] }) {
   const keys = BUTTON_KEYS.filter((k) => page.buttons[k]);
   if (keys.length === 0) return <p className="text-sm text-muted-foreground">{t.empty}</p>;
   return (
-    <ul className="max-h-48 divide-y overflow-y-auto rounded-lg border text-sm">
+    <ul className="divide-y rounded-lg border text-sm">
       {keys.map((k) => {
         const button = page.buttons[k]!;
         const note = notes.find((n) => n.key === k);

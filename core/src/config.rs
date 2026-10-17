@@ -109,6 +109,10 @@ pub enum Action {
     },
     Text {
         text: String,
+        /// 보내는 방식. 없으면 `type`(지금처럼 한 글자씩 입력).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        method: Option<TextMethod>,
     },
     Media {
         command: MediaCommand,
@@ -131,6 +135,17 @@ pub enum Action {
         #[ts(type = "number")]
         ms: u64,
     },
+}
+
+/// 문장 버튼이 글자를 보내는 방식.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../app/src/bindings/")]
+pub enum TextMethod {
+    /// 클립보드에 넣고 붙여넣기(Ctrl+V)
+    Paste,
+    /// 글자를 하나씩 입력
+    Type,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -844,6 +859,48 @@ mod tests {
         // 같은 키 두 번
         config.system_keys.as_mut().unwrap().next = "-".into();
         assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn text_method_is_optional_and_round_trips() {
+        // 없으면 None이고, 다시 쓸 때 키를 만들지 않는다
+        let plain: Action = serde_json::from_str(r#"{"type":"text","text":"a"}"#).unwrap();
+        assert_eq!(
+            plain,
+            Action::Text {
+                text: "a".into(),
+                method: None
+            }
+        );
+        assert!(!serde_json::to_string(&plain).unwrap().contains("method"));
+
+        let paste_json = r#"{"type":"text","text":"a","method":"paste"}"#;
+        let paste: Action = serde_json::from_str(paste_json).unwrap();
+        assert_eq!(
+            paste,
+            Action::Text {
+                text: "a".into(),
+                method: Some(TextMethod::Paste)
+            }
+        );
+        let again: Action = serde_json::from_str(&serde_json::to_string(&paste).unwrap()).unwrap();
+        assert_eq!(again, paste);
+
+        let typed: Action =
+            serde_json::from_str(r#"{"type":"text","text":"a","method":"type"}"#).unwrap();
+        assert!(matches!(
+            typed,
+            Action::Text {
+                method: Some(TextMethod::Type),
+                ..
+            }
+        ));
+
+        // 모르는 방식은 설정 전체를 거부한다
+        let bad = r#"{"version":1,"pages":[{"name":"p","buttons":{"7":{"label":"a","action":{"type":"text","text":"a","method":"clipboard"}}}}]}"#;
+        assert!(parse(bad).is_err());
+        let good = bad.replace("clipboard", "paste");
+        assert!(parse(&good).is_ok());
     }
 
     #[test]

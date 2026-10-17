@@ -1,5 +1,18 @@
-import { useEffect, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, Check, Clock, FileSearch, FolderOpen, Keyboard, Plus, X } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Check,
+  ClipboardPaste,
+  Clock,
+  Eye,
+  FileSearch,
+  FolderOpen,
+  Keyboard,
+  Plus,
+  TriangleAlert,
+  X,
+} from "lucide-react";
 import type { Action } from "@/bindings/Action";
 import type { MediaCommand } from "@/bindings/MediaCommand";
 import type { TextMethod } from "@/bindings/TextMethod";
@@ -19,7 +32,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { useLang, useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { pickFile, pickFolder, recordHotkey, type RecordResult } from "../api";
-import { expandPreview, hasPlaceholders, PLACEHOLDERS, type PlaceholderId } from "../textTemplate";
+import {
+  expandPreview,
+  placeholderRanges,
+  PLACEHOLDERS,
+  previewSegments,
+  type PlaceholderId,
+} from "../textTemplate";
 import { ActionPicker } from "./ActionPicker";
 import { AppPickerDialog } from "./AppPickerDialog";
 import { emptyAction, KIND_ICONS, MAX_DELAY_MS } from "./meta";
@@ -344,11 +363,16 @@ function TextForm({ action, onChange }: FormProps<Of<"text">>) {
   const f = useT().editor.forms.text;
   const lang = useLang();
   const area = useRef<HTMLTextAreaElement>(null);
+  const mirror = useRef<HTMLDivElement>(null);
+  const pasteButton = useRef<HTMLButtonElement>(null);
   /** 입력란에 한 번이라도 들어간 적이 있는지. 아니면 선택 위치가 믿을 만하지 않아 끝에 넣는다. */
   const focused = useRef(false);
+  /** 입력란의 선택 영역. 입력란 밖이면 null (덧칠의 활성 모양에 쓴다). */
+  const [sel, setSel] = useState<{ start: number; end: number } | null>(null);
   const [now, setNow] = useState(() => new Date());
   const method = action.method ?? "type";
-  const showPreview = hasPlaceholders(action.text);
+  const ranges = placeholderRanges(action.text);
+  const showPreview = ranges.length > 0;
 
   // 미리 보기의 시각이 오래되지 않게 가끔 갱신한다 (자리표시자가 있을 때만)
   useEffect(() => {
@@ -358,9 +382,19 @@ function TextForm({ action, onChange }: FormProps<Of<"text">>) {
     return () => window.clearInterval(id);
   }, [showPreview]);
 
+  // 글이 바뀌면 입력란이 스크롤되었을 수 있으니 그릴 때마다 거울 층을 맞춘다
+  useLayoutEffect(() => {
+    if (mirror.current && area.current) mirror.current.scrollTop = area.current.scrollTop;
+  });
+
   // `method`를 지키려고 action 전체를 펼쳐서 넘긴다
   const setText = (text: string) => onChange({ ...action, text });
   const setMethod = (m: TextMethod) => onChange({ ...action, method: m });
+
+  const readSel = () => {
+    const el = area.current;
+    if (el) setSel({ start: el.selectionStart, end: el.selectionEnd });
+  };
 
   /** 커서 자리(선택 영역이 있으면 그것을 대신해서)에 지금 UI 언어 이름을 넣고 커서를 그 뒤로 옮긴다. */
   const insert = (id: PlaceholderId) => {
@@ -377,6 +411,54 @@ function TextForm({ action, onChange }: FormProps<Of<"text">>) {
       el?.setSelectionRange(caret, caret);
     });
   };
+
+  /** 자리표시자 바로 뒤의 Backspace, 바로 앞의 Delete는 덩어리째 지운다. */
+  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key !== "Backspace" && e.key !== "Delete") return;
+    // 한글 조합 중(조합 중인 키는 229로 온다)이나 Ctrl+Backspace 같은 조합은 기본 동작
+    if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229 || e.ctrlKey || e.altKey || e.metaKey) return;
+    const el = e.currentTarget;
+    if (el.selectionStart !== el.selectionEnd) return;
+    const caret = el.selectionStart;
+    const hit = placeholderRanges(el.value).find((r) => (e.key === "Backspace" ? r.end : r.start) === caret);
+    if (!hit) return;
+    e.preventDefault();
+    // 입력란 안의 Ctrl+Z는 브라우저 되돌리기라서 브라우저 편집 명령으로 지워야 그 기록에 남는다.
+    // 바뀐 글은 평소 입력처럼 onChange로 와서 앱의 되돌리기 기록에도 들어간다.
+    el.setSelectionRange(hit.start, hit.end);
+    if (!document.execCommand("delete")) {
+      setText(el.value.slice(0, hit.start) + el.value.slice(hit.end));
+      requestAnimationFrame(() => el.setSelectionRange(hit.start, hit.start));
+    }
+  };
+
+  /** 커서가 덩어리 안이나 바로 뒤에 있거나 선택 영역이 겹치면 진하게 (덩어리째 지워진다는 예고) */
+  const isActive = (r: { start: number; end: number }) =>
+    sel !== null &&
+    (sel.start === sel.end ? sel.start > r.start && sel.start <= r.end : sel.start < r.end && sel.end > r.start);
+
+  // 입력란 뒤에 까는 거울 층: 같은 글을 같은 모양으로 투명하게 놓고 자리표시자에만 바탕을 칠한다
+  const mirrorParts: ReactNode[] = [];
+  let at = 0;
+  for (const r of ranges) {
+    if (r.start > at) mirrorParts.push(action.text.slice(at, r.start));
+    mirrorParts.push(
+      <span
+        key={r.start}
+        className={cn(
+          "rounded-[4px] box-decoration-clone",
+          isActive(r)
+            ? "bg-[#DBEAFE] shadow-[0_0_0_1px_#93C5FD]"
+            : "bg-selection-soft shadow-[0_0_0_1px_var(--selection-soft)]",
+        )}
+      >
+        {action.text.slice(r.start, r.end)}
+      </span>,
+    );
+    at = r.end;
+  }
+  // 끝 줄바꿈은 뒤에 글자가 있어야 빈 줄이 생긴다 (입력란과 높이를 맞춘다)
+  mirrorParts.push(action.text.slice(at) + (action.text.endsWith("\n") ? "​" : ""));
 
   return (
     <div className="space-y-4">
@@ -398,6 +480,9 @@ function TextForm({ action, onChange }: FormProps<Of<"text">>) {
               {PLACEHOLDERS.map((p) => (
                 <DropdownMenuItem key={p.id} onSelect={() => insert(p.id)}>
                   <span>{f.insertItems[p.id]}</span>
+                  <span className="rounded-[4px] bg-selection-soft px-1 text-xs text-selection-foreground">
+                    {p[lang]}
+                  </span>
                   <span className="ml-auto pl-6 text-xs text-muted-foreground">
                     {expandPreview(p[lang], now, lang, f.clipboardExample)}
                   </span>
@@ -406,25 +491,89 @@ function TextForm({ action, onChange }: FormProps<Of<"text">>) {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        <Textarea
-          ref={area}
-          id="text-body"
-          rows={4}
-          value={action.text}
-          placeholder={f.placeholder}
-          onFocus={() => (focused.current = true)}
-          onChange={(e) => setText(e.currentTarget.value)}
-        />
+        <div className="relative rounded-lg bg-card">
+          {/* 줄 꺾임이 입력란과 같도록 글꼴·크기·줄 높이·여백·테두리 폭·줄바꿈 규칙을 똑같이 둔다 */}
+          <div
+            ref={mirror}
+            aria-hidden
+            className="pointer-events-none absolute inset-0 overflow-hidden rounded-lg border border-transparent px-2.5 py-2 text-base break-words whitespace-pre-wrap text-transparent md:text-sm"
+          >
+            {mirrorParts}
+          </div>
+          <Textarea
+            ref={area}
+            id="text-body"
+            rows={4}
+            value={action.text}
+            placeholder={f.placeholder}
+            aria-describedby={showPreview ? "text-preview" : undefined}
+            className="relative bg-transparent dark:bg-transparent"
+            onFocus={() => {
+              focused.current = true;
+              readSel();
+            }}
+            onBlur={() => setSel(null)}
+            onSelect={readSel}
+            onChange={(e) => {
+              setText(e.currentTarget.value);
+              readSel();
+            }}
+            onKeyDown={onKeyDown}
+            onScroll={(e) => {
+              if (mirror.current) mirror.current.scrollTop = e.currentTarget.scrollTop;
+            }}
+          />
+        </div>
         {showPreview && (
-          <div className="rounded-lg bg-muted/50 px-2.5 py-2 text-sm">
-            <span className="text-xs text-muted-foreground">{f.previewLabel}</span>
-            <p className="whitespace-pre-wrap break-words">
-              {expandPreview(action.text, now, lang, f.clipboardSample)}
+          <div
+            id="text-preview"
+            aria-live="polite"
+            className="flex flex-col gap-1.5 rounded-[10px] border border-border bg-background px-3 py-2.5"
+          >
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Eye className="size-3.5" /> {f.previewLabel}
+            </span>
+            <p className="max-h-40 overflow-y-auto text-sm leading-[22px] whitespace-pre-wrap [overflow-wrap:anywhere]">
+              {previewSegments(action.text, now, lang, f.clipboardSample).map((s, i) =>
+                s.kind === "plain" ? (
+                  s.text
+                ) : (
+                  <span
+                    key={i}
+                    className={cn(
+                      "rounded-[4px] bg-selection-soft px-[3px] box-decoration-clone",
+                      s.kind === "value"
+                        ? "font-medium text-selection-foreground"
+                        : "font-normal text-muted-foreground italic",
+                    )}
+                  >
+                    {s.text}
+                  </span>
+                ),
+              )}
             </p>
           </div>
         )}
         {method === "type" && action.text.includes("\n") && (
-          <p className="text-xs text-muted-foreground">{f.multilineWarn}</p>
+          <div role="status" className="flex gap-2.5 rounded-[10px] border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2.5">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-amber-900">{f.multilineWarnTitle}</p>
+              <p className="mt-0.5 text-xs text-amber-800">{f.multilineWarnBody}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2 border-amber-300 bg-card text-amber-900 hover:bg-amber-100 hover:text-amber-900"
+                onClick={() => {
+                  setMethod("paste");
+                  // 상자가 사라지므로 포커스를 바뀐 대상인 방식 단추로 옮긴다
+                  pasteButton.current?.focus();
+                }}
+              >
+                <ClipboardPaste /> {f.switchToPaste}
+              </Button>
+            </div>
+          </div>
         )}
       </div>
 
@@ -434,6 +583,7 @@ function TextForm({ action, onChange }: FormProps<Of<"text">>) {
           {(["paste", "type"] as const).map((m) => (
             <button
               key={m}
+              ref={m === "paste" ? pasteButton : undefined}
               onClick={() => setMethod(m)}
               className={cn(
                 "flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm",

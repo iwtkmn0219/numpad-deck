@@ -204,12 +204,17 @@ export const en: Dict = {
         title: "Replace your settings with this backup?",
         body: (count: number) =>
           `All buttons, pages and the layout will change to this file (${count} page${count === 1 ? "" : "s"}).`,
-        backup: "Your current settings are backed up automatically. Undo (Ctrl+Z) won't bring them back.",
+        backup:
+          "Your current settings are backed up automatically. Undo (Ctrl+Z) won't bring them back, but you can go back by opening this backup in Settings → Backup → ‘Import a backup file…’.",
         where: (folder: string) => `Backup folder: ${folder}`,
         cancel: "Cancel",
         confirm: "Replace",
       },
-      replaced: (path: string) => `Settings replaced. Your previous settings were backed up here: ${path}`,
+      replaced: (path: string) =>
+        `Settings replaced. Your previous settings were backed up here: ${path}` +
+        (path.toLowerCase().endsWith(".npdeck")
+          ? " To go back, open this file in Settings → Backup → ‘Import a backup file…’."
+          : ""),
       dismiss: "Close",
     },
     status: {

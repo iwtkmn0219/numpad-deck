@@ -325,6 +325,19 @@ pub fn export(
     dirs: &UserDirs,
     path: &Path,
 ) -> Result<(), ShareError> {
+    export_with(config, sel, app_version, dirs, path, false)
+}
+
+/// [`export`]와 같되, 담을 수 없는 효과음(너무 크거나 합계를 넘음)은 오류로 멈추지 않고 소리만 뺀다.
+/// 버튼은 그대로 두고 경로만 [`portable_path`]로 바꾼다. 자동 백업이 효과음 때문에 실패하지 않게 한다.
+fn export_with(
+    config: &Config,
+    sel: &Selection,
+    app_version: &str,
+    dirs: &UserDirs,
+    path: &Path,
+    skip_unfit_sounds: bool,
+) -> Result<(), ShareError> {
     let mut pages = selected_pages(config, sel);
     if pages.is_empty() {
         return Err(ShareError::Invalid(tr(
@@ -351,27 +364,43 @@ pub fn export(
                             .map(|n| n.to_string_lossy().into_owned())
                             .unwrap_or_default();
                         if size > MAX_SOUND {
-                            error = Some(ShareError::SoundTooBig(name));
+                            if skip_unfit_sounds {
+                                *file = portable_path(file, dirs);
+                            } else {
+                                error = Some(ShareError::SoundTooBig(name));
+                            }
                             return;
                         }
                         let bytes = match std::fs::read(&path) {
                             Ok(b) => b,
                             Err(e) => {
-                                error = Some(io_err(e));
+                                if skip_unfit_sounds {
+                                    *file = portable_path(file, dirs);
+                                } else {
+                                    error = Some(io_err(e));
+                                }
                                 return;
                             }
                         };
                         if bytes.len() as u64 > MAX_SOUND {
-                            error = Some(ShareError::SoundTooBig(name));
+                            if skip_unfit_sounds {
+                                *file = portable_path(file, dirs);
+                            } else {
+                                error = Some(ShareError::SoundTooBig(name));
+                            }
                             return;
                         }
                         let entry = sound_entry_name(&bytes, &ext);
                         if !sounds.contains_key(&entry) {
-                            total += bytes.len() as u64;
-                            if total > MAX_SOUNDS_TOTAL {
-                                error = Some(ShareError::SoundsTooBig);
+                            if total + bytes.len() as u64 > MAX_SOUNDS_TOTAL {
+                                if skip_unfit_sounds {
+                                    *file = portable_path(file, dirs);
+                                } else {
+                                    error = Some(ShareError::SoundsTooBig);
+                                }
                                 return;
                             }
+                            total += bytes.len() as u64;
                             sounds.insert(entry.clone(), bytes);
                         }
                         *file = entry;
@@ -862,31 +891,62 @@ fn stamp(now: SystemTime) -> String {
     format_stamp(local_parts(secs))
 }
 
-/// `config-<시각>[-<번호>].json` → (시각, 번호) 정렬 키. 형식이 다르면 None.
+/// 자동 백업 확장자: 설정이 정상이면 `.npdeck`, 깨졌을 때만 원본 `.json`.
+const BACKUP_EXTS: [&str; 2] = ["json", EXTENSION];
+
+/// `config-<시각>[-<번호>].(json|npdeck)` → (시각, 번호) 정렬 키. 형식이 다르면 None.
 fn backup_sort_key(file_name: &str) -> Option<(String, u32)> {
-    let stem = file_name.strip_prefix("config-")?.strip_suffix(".json")?;
+    let rest = file_name.strip_prefix("config-")?;
+    let stem = BACKUP_EXTS
+        .iter()
+        .find_map(|ext| rest.strip_suffix(ext).and_then(|r| r.strip_suffix('.')))?;
     let mut it = stem.splitn(3, '-');
     let (date, time) = (it.next()?, it.next()?);
     let n = it.next().map_or(Some(1), |n| n.parse().ok())?;
     Some((format!("{date}-{time}"), n))
 }
 
-/// 지금 설정 파일을 같은 폴더의 `backups/`로 복사하고 최신 10개만 남긴다. 복사한 경로를 돌려준다.
-pub fn backup_config(config_path: &Path, now: SystemTime) -> Result<PathBuf, ShareError> {
+/// 덮어쓰기 직전의 설정을 같은 폴더의 `backups/`에 남기고 최신 10개만 둔다. 만든 경로를 돌려준다.
+///
+/// - 정상(`broken == false`): 지금 앱이 쓰는 설정(`config`)을 `.npdeck` 백업 파일로 내보낸다.
+///   "백업 파일 가져오기"로 되돌릴 수 있고 효과음도 담긴다. 담을 수 없는 효과음은 빼고 만든다.
+/// - 깨짐(`broken == true`): 디스크의 설정 파일이 올바른 설정이 아니므로 원본을 `.json`으로 복사한다.
+///
+/// `.json`과 `.npdeck`은 한 묶음으로 세어 오래된 것부터 지운다.
+pub fn backup_config(
+    config_path: &Path,
+    config: &Config,
+    broken: bool,
+    app_version: &str,
+    dirs: &UserDirs,
+    now: SystemTime,
+) -> Result<PathBuf, ShareError> {
     let dir = config_path
         .parent()
         .ok_or_else(|| ShareError::Io("no parent".into()))?
         .join("backups");
     std::fs::create_dir_all(&dir).map_err(io_err)?;
+    let ext = if broken { "json" } else { EXTENSION };
     let base = format!("config-{}", stamp(now));
-    let mut dest = dir.join(format!("{base}.json"));
+    // 같은 초에 또 만들면 번호를 붙여 덮어쓰지 않는다 (두 확장자 모두 확인해 정렬 순서가 겹치지 않게).
+    let taken = |name: &str| {
+        BACKUP_EXTS
+            .iter()
+            .any(|e| dir.join(format!("{name}.{e}")).exists())
+    };
+    let mut name = base.clone();
     let mut n = 2;
-    // 같은 초에 또 만들면 번호를 붙여 덮어쓰지 않는다.
-    while dest.exists() {
-        dest = dir.join(format!("{base}-{n}.json"));
+    while taken(&name) {
+        name = format!("{base}-{n}");
         n += 1;
     }
-    std::fs::copy(config_path, &dest).map_err(io_err)?;
+    let dest = dir.join(format!("{name}.{ext}"));
+    if broken {
+        std::fs::copy(config_path, &dest).map_err(io_err)?;
+    } else {
+        // 임시 파일에 쓰고 이름을 바꾸므로 덜 쓴 파일이 `config-*.npdeck`로 남지 않는다.
+        export_with(config, &Selection::All, app_version, dirs, &dest, true)?;
+    }
 
     let mut all: Vec<((String, u32), PathBuf)> = std::fs::read_dir(&dir)
         .map_err(io_err)?
@@ -1845,21 +1905,35 @@ mod tests {
         assert!(!dir.path().join("sounds").exists());
     }
 
+    /// 백업 시험용: 설정 파일을 만들고 (설정 파일 경로, 설정, 사용자 폴더)를 돌려준다.
+    fn backup_fixture(dir: &Path, raw: &[u8]) -> (PathBuf, Config, UserDirs) {
+        let cfg_path = dir.join("config.json");
+        std::fs::write(&cfg_path, raw).unwrap();
+        let cfg = config_of(&[page_json("A", "x.wav")], "");
+        (cfg_path, cfg, test_dirs(dir))
+    }
+
+    /// 61초 간격의 시각 (1971-01-01 근처).
+    fn minute_after(i: u64) -> SystemTime {
+        SystemTime::UNIX_EPOCH
+            + std::time::Duration::from_secs(86_400 * 365)
+            + std::time::Duration::from_secs(i * 61)
+    }
+
     #[test]
     fn backup_keeps_latest_ten() {
         let dir = tempfile::tempdir().unwrap();
-        let cfg = dir.path().join("config.json");
-        std::fs::write(&cfg, b"{}").unwrap();
-        let t0 = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(86_400 * 365);
+        let (path, cfg, dirs) = backup_fixture(dir.path(), b"{}");
         let mut first = None;
         for i in 0..11u64 {
-            let p = backup_config(&cfg, t0 + std::time::Duration::from_secs(i * 61)).unwrap();
+            let p = backup_config(&path, &cfg, false, "0.6.0", &dirs, minute_after(i)).unwrap();
             first.get_or_insert(p);
         }
         let first = first.unwrap();
         // 현지 시각이라 값은 시간대에 따라 다르다: 형식만 본다
         let fname = first.file_name().unwrap().to_string_lossy().into_owned();
         assert!(backup_sort_key(&fname).is_some(), "{fname}");
+        assert!(fname.ends_with(".npdeck"), "{fname}");
         assert!(!first.exists());
         let n = std::fs::read_dir(dir.path().join("backups"))
             .unwrap()
@@ -1870,12 +1944,11 @@ mod tests {
     #[test]
     fn backup_same_second_does_not_overwrite() {
         let dir = tempfile::tempdir().unwrap();
-        let cfg = dir.path().join("config.json");
-        std::fs::write(&cfg, b"one").unwrap();
+        let (path, cfg, dirs) = backup_fixture(dir.path(), b"one");
         let t = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
-        let a = backup_config(&cfg, t).unwrap();
-        std::fs::write(&cfg, b"two").unwrap();
-        let b = backup_config(&cfg, t).unwrap();
+        let a = backup_config(&path, &cfg, true, "0.6.0", &dirs, t).unwrap();
+        std::fs::write(&path, b"two").unwrap();
+        let b = backup_config(&path, &cfg, true, "0.6.0", &dirs, t).unwrap();
         assert_ne!(a, b);
         assert_eq!(std::fs::read(&a).unwrap(), b"one");
         assert_eq!(std::fs::read(&b).unwrap(), b"two");
@@ -1883,6 +1956,167 @@ mod tests {
             a.file_name().unwrap().to_string_lossy().len(),
             "config-20010909-014640.json".len()
         );
+        // 확장자가 달라도 같은 초면 번호가 겹치지 않는다
+        let c = backup_config(&path, &cfg, false, "0.6.0", &dirs, t).unwrap();
+        let name = |p: &Path| p.file_name().unwrap().to_string_lossy().into_owned();
+        let keys: BTreeSet<_> = [&a, &b, &c]
+            .iter()
+            .map(|p| backup_sort_key(&name(p)).unwrap())
+            .collect();
+        assert_eq!(keys.len(), 3, "{a:?} {b:?} {c:?}");
+    }
+
+    #[test]
+    fn backup_is_npdeck_backup_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let wav = write_file(dir.path(), "snd/a.wav", b"RIFFdata");
+        let cfg = config_of(
+            &[page_json("A", &wav), page_json("B", "none.wav")],
+            r#""language":"en","micIndicator":false,"#,
+        );
+        // 설정 파일이 아직 없어도 메모리의 설정을 백업한다
+        let path = dir.path().join("config.json");
+        let dirs = test_dirs(dir.path());
+        let p = backup_config(&path, &cfg, false, "0.6.0", &dirs, minute_after(0)).unwrap();
+        assert_eq!(p.extension().unwrap(), "npdeck");
+        assert_eq!(p.parent().unwrap(), dir.path().join("backups"));
+        let b = read(&p).unwrap();
+        assert_eq!(b.manifest.kind, Kind::Backup);
+        assert_eq!(b.manifest.pages.len(), 2);
+        assert_eq!(b.manifest.pages[0].name, "A");
+        assert_eq!(b.manifest.pages[1].name, "B");
+        assert_eq!(b.manifest.language, Some(Lang::En));
+        assert_eq!(b.manifest.mic_indicator, Some(false));
+        assert_eq!(b.sounds.len(), 1);
+        // 임시 파일이 남지 않고, 설정 파일은 만들지 않는다
+        let names: Vec<_> = std::fs::read_dir(dir.path().join("backups"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names.len(), 1, "{names:?}");
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn backup_leaves_out_sounds_it_cannot_hold() {
+        let dir = tempfile::tempdir().unwrap();
+        let ok = write_file(dir.path(), "ok.wav", b"ok");
+        let big = write_file(dir.path(), "big.wav", &vec![1u8; MAX_SOUND as usize + 1]);
+        let missing = dir.path().join("none.wav").to_string_lossy().into_owned();
+        // 4MiB짜리 서로 다른 소리 6개(24MiB): 합계 한도(20MiB)를 넘는 만큼은 빠진다.
+        let fillers: Vec<String> = (0..6u8)
+            .map(|i| {
+                write_file(
+                    dir.path(),
+                    &format!("f{i}.wav"),
+                    &vec![i + 10; 4 * 1024 * 1024],
+                )
+            })
+            .collect();
+        let mut buttons = vec![
+            ("7", ok.clone()),
+            ("8", big.clone()),
+            ("9", missing.clone()),
+        ];
+        let keys = ["4", "5", "6", "1", "2", "3"];
+        for (k, f) in keys.iter().zip(&fillers) {
+            buttons.push((k, f.clone()));
+        }
+        let body: Vec<String> = buttons
+            .iter()
+            .map(|(k, f)| {
+                format!(
+                    r#""{k}":{{"label":"s","action":{{"type":"sound","file":"{}"}}}}"#,
+                    esc(f)
+                )
+            })
+            .collect();
+        let page = format!(r#"{{"name":"P","buttons":{{{}}}}}"#, body.join(","));
+        let cfg = config_of(&[page], "");
+        // 사용자용 내보내기는 그대로 실패한다
+        assert!(export_to(&cfg, &Selection::All, dir.path()).is_err());
+        let path = dir.path().join("config.json");
+        let dirs = test_dirs(dir.path());
+        let p = backup_config(&path, &cfg, false, "0.6.0", &dirs, minute_after(0)).unwrap();
+        let b = read(&p).unwrap();
+        let page = &b.manifest.pages[0];
+        assert_eq!(page.buttons.len(), 9, "버튼은 모두 남는다");
+        // 키 이름(JSON 키)으로 소리 파일 경로를 찾는다
+        let json = serde_json::to_value(page).unwrap();
+        let file_of = |k: &str| {
+            json["buttons"][k]["action"]["file"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        };
+        assert_eq!(file_of("8"), portable_path(&big, &dirs));
+        assert_eq!(file_of("9"), portable_path(&missing, &dirs));
+        // 합계 한도(20MiB) 안에서만 담기고, 못 담은 소리는 원래 경로가 그대로 남는다
+        let all_keys = ["7", "4", "5", "6", "1", "2", "3"];
+        let bundled = all_keys
+            .iter()
+            .filter(|k| file_of(k).starts_with("sounds/"))
+            .count();
+        assert!(bundled >= 4 && bundled < all_keys.len(), "{bundled}");
+        assert_eq!(b.sounds.len(), bundled);
+        let total: u64 = b.sounds.values().map(|v| v.len() as u64).sum();
+        assert!(total <= MAX_SOUNDS_TOTAL);
+        for (k, orig) in [("4", &fillers[0]), ("5", &fillers[1]), ("6", &fillers[2])] {
+            let f = file_of(k);
+            assert!(
+                f.starts_with("sounds/") || f == portable_path(orig, &dirs),
+                "{k}: {f}"
+            );
+        }
+    }
+
+    #[test]
+    fn backup_of_broken_config_copies_raw_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let raw = b"{ this is not valid json \xff";
+        let (path, cfg, dirs) = backup_fixture(dir.path(), raw);
+        let p = backup_config(&path, &cfg, true, "0.6.0", &dirs, minute_after(0)).unwrap();
+        assert_eq!(p.extension().unwrap(), "json");
+        assert_eq!(std::fs::read(&p).unwrap(), raw);
+        assert_eq!(std::fs::read_dir(p.parent().unwrap()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn backup_rotation_mixes_json_and_npdeck() {
+        let dir = tempfile::tempdir().unwrap();
+        let (path, cfg, dirs) = backup_fixture(dir.path(), b"{}");
+        let mut made = vec![];
+        for i in 0..13u64 {
+            // 번갈아 두 종류를 만든다
+            let p =
+                backup_config(&path, &cfg, i % 2 == 0, "0.6.0", &dirs, minute_after(i)).unwrap();
+            made.push(p);
+        }
+        let bdir = dir.path().join("backups");
+        assert_eq!(std::fs::read_dir(&bdir).unwrap().count(), 10);
+        // 가장 오래된 3개가 지워지고 최신 10개가 남는다
+        for p in &made[..3] {
+            assert!(!p.exists(), "{p:?}");
+        }
+        for p in &made[3..] {
+            assert!(p.exists(), "{p:?}");
+        }
+        let exts: BTreeSet<_> = made[3..]
+            .iter()
+            .map(|p| p.extension().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(exts.len(), 2);
+    }
+
+    #[test]
+    fn backup_sort_key_accepts_both_extensions() {
+        assert!(backup_sort_key("config-20010909-014640.json").is_some());
+        assert_eq!(
+            backup_sort_key("config-20010909-014640-3.npdeck"),
+            Some(("20010909-014640".into(), 3))
+        );
+        assert!(backup_sort_key("config-20010909-014640.npdeck.tmp").is_none());
+        assert!(backup_sort_key("config-20010909-014640.txt").is_none());
     }
 
     #[test]
@@ -1905,7 +2139,8 @@ mod tests {
             std::fs::write(bdir.join(format!("config-29990101-00000{i}.json")), b"x").unwrap();
         }
         let t = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
-        let p = backup_config(&cfg, t).unwrap();
+        let (_, config, dirs) = backup_fixture(dir.path(), b"{}");
+        let p = backup_config(&cfg, &config, false, "0.6.0", &dirs, t).unwrap();
         assert!(p.exists());
         assert_eq!(std::fs::read_dir(&bdir).unwrap().count(), 10);
     }

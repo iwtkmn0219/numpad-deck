@@ -139,6 +139,7 @@ fn stale() -> String {
 #[tauri::command]
 pub async fn install_share(
     state: State<'_, ShareState>,
+    app: AppHandle,
     runtime: State<'_, Arc<Runtime>>,
     choice: InstallChoice,
 ) -> Result<Option<String>, String> {
@@ -155,14 +156,24 @@ pub async fn install_share(
     };
     let config = runtime.config();
     let config_path = runtime.config_path().to_path_buf();
-    // 바꾸기이거나, 지금 설정 파일이 깨져 기본값으로 떠 있으면 덮어쓰기 전에 백업한다
-    let replace = choice.mode == InstallMode::Replace || runtime.config_error().is_some();
+    let version = app.package_info().version.to_string();
+    // 설정 파일이 깨져 기본값으로 떠 있으면 디스크의 원본을 그대로 백업해야 한다
+    let broken = runtime.config_error().is_some();
+    // 바꾸기이거나 설정 파일이 깨져 있으면 덮어쓰기 전에 백업한다
+    let replace = choice.mode == InstallMode::Replace || broken;
     let (taken, result) = tauri::async_runtime::spawn_blocking(move || {
         let r = (|| {
             let backup = if replace {
                 Some(
-                    share::backup_config(&config_path, std::time::SystemTime::now())
-                        .map_err(|e| e.to_string())?,
+                    share::backup_config(
+                        &config_path,
+                        &config,
+                        broken,
+                        &version,
+                        &UserDirs::current(),
+                        std::time::SystemTime::now(),
+                    )
+                    .map_err(|e| e.to_string())?,
                 )
             } else {
                 None

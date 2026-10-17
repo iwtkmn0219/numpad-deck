@@ -197,12 +197,17 @@ export const ko = {
       replace: {
         title: "지금 설정을 이 백업으로 바꿀까요?",
         body: (count: number) => `버튼·페이지·배치가 모두 이 파일의 내용(페이지 ${count}개)으로 바뀌어요.`,
-        backup: "지금 설정은 자동으로 백업돼요. 되돌리기(Ctrl+Z)로는 돌아오지 않아요.",
+        backup:
+          "지금 설정은 자동으로 백업돼요. 되돌리기(Ctrl+Z)로는 돌아오지 않지만, 설정 → 백업 → ‘백업 파일 가져오기…’에서 이 백업을 열면 돌아갈 수 있어요.",
         where: (folder: string) => `백업 위치: ${folder}`,
         cancel: "취소",
         confirm: "바꾸기",
       },
-      replaced: (path: string) => `설정을 바꿨어요. 이전 설정은 여기 백업했어요: ${path}`,
+      replaced: (path: string) =>
+        `설정을 바꿨어요. 이전 설정은 여기 백업했어요: ${path}` +
+        (path.toLowerCase().endsWith(".npdeck")
+          ? " 돌아가려면 설정 → 백업 → ‘백업 파일 가져오기…’에서 이 파일을 여세요."
+          : ""),
       dismiss: "닫기",
     },
     status: {

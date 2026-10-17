@@ -77,7 +77,7 @@ export function IconPickerDialog({ open, onOpenChange, current, onPick }: Props)
           />
         </div>
         {!query.trim() && <p className="text-xs text-muted-foreground">{t.suggested}</p>}
-        <div className="grid h-80 grid-cols-8 content-start gap-1 overflow-y-auto">
+        <div className="-m-1 grid h-80 min-h-0 grid-cols-8 content-start gap-1 overflow-y-auto p-1">
           {shown.length === 0 ? (
             <p className="col-span-8 p-2 text-sm text-muted-foreground">{t.empty}</p>
           ) : (

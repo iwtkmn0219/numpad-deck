@@ -20,6 +20,7 @@ use deck_core::hook::{self, HookConfig, HookEvent, HookHandle};
 use deck_core::i18n::{self, tr, Lang};
 use deck_core::key::{NumpadKey, RawKey};
 use deck_core::record::{Outcome, Recorder, Rejection};
+use deck_core::share::BackupMode;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
@@ -34,6 +35,9 @@ struct State {
     numlock_on: Option<bool>,
     paused: bool,
     config_error: Option<String>,
+    /// 시작할 때 설정 파일을 읽지 못해 기본 설정으로 떠 있다. 정상 설정을 읽거나 저장하면 꺼진다.
+    /// (켜져 있으면 메모리의 설정은 지킬 만한 사용자 설정이 아니다.)
+    started_with_default: bool,
     /// 마지막으로 누른 버튼 키. 실행 실패를 OSD에 표시할 때 쓴다.
     last_button: Option<NumpadKey>,
     /// 단축키 녹화 중이면 `Some`
@@ -222,6 +226,7 @@ impl Runtime {
             deck: Deck::new(),
             numlock_on: None,
             paused: false,
+            started_with_default: config_error.is_some(),
             config_error,
             last_button: None,
             recorder: None,
@@ -299,6 +304,7 @@ impl Runtime {
                             s.deck.on_config_changed(&config);
                             s.config = config.clone();
                             s.config_error = None;
+                            s.started_with_default = false;
                             Some(config)
                         }
                         Err(e) => {
@@ -446,6 +452,7 @@ impl Runtime {
             s.deck.on_config_changed(&config);
             s.config = config;
             s.config_error = None;
+            s.started_with_default = false;
             Effects {
                 tray: Some(s.view()),
                 osd_refresh: Some(s.payload(None, None)),
@@ -516,6 +523,18 @@ impl Runtime {
     pub fn stop_sounds(&self) {
         self.executor
             .submit(tr("효과음 멈추기", "Stop sounds"), Action::StopSounds);
+    }
+
+    /// 덮어쓰기 전 자동 백업에 필요한 것을 한 번의 잠금으로 읽는다
+    /// (따로 읽으면 그 사이 파일 감시가 설정을 바꿀 수 있다).
+    pub fn backup_source(&self) -> (Config, BackupMode) {
+        let s = self.state.lock().unwrap();
+        let mode = match (&s.config_error, s.started_with_default) {
+            (None, _) => BackupMode::Export,
+            (Some(_), true) => BackupMode::Raw,
+            (Some(_), false) => BackupMode::Both,
+        };
+        (s.config.clone(), mode)
     }
 
     pub fn config_path(&self) -> &std::path::Path {

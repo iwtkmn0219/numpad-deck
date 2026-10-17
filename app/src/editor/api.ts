@@ -1,8 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import type { Action } from "@/bindings/Action";
 import type { Config } from "@/bindings/Config";
+import type { ExportReport } from "@/bindings/ExportReport";
+import type { InstallChoice } from "@/bindings/InstallChoice";
+import type { Preview } from "@/bindings/Preview";
 import { codeToVk, numpadLabel } from "./keymap";
 
 // Rust `app/src-tauri/src/lib.rs`의 command, `runtime.rs`의 이벤트와 맞아야 한다.
@@ -156,4 +159,64 @@ export async function pickFile(filterName: string, extensions: string[]): Promis
 export async function pickFolder(): Promise<string | null> {
   const picked = await open({ multiple: false, directory: true });
   return typeof picked === "string" ? picked : null;
+}
+
+// 공유 파일(.npdeck). `app/src-tauri/src/share.rs`의 command와 맞아야 한다.
+// 실패하면 화면에 그대로 보일 문구(문자열)로 reject된다.
+
+const SHARE_FILTERS = [{ name: "Numpad Deck", extensions: ["npdeck"] }];
+
+/** 내보내기 전 확인. `pages`가 null이면 설정 전체(백업). */
+export function exportCheck(pages: number[] | null): Promise<ExportReport> {
+  return invoke<ExportReport>("export_check", { pages });
+}
+
+export function exportShare(pages: number[] | null, path: string): Promise<void> {
+  return invoke("export_share", { pages, path });
+}
+
+/** 파일을 읽어 미리 보기를 받는다. 열 때마다 코어의 대기 중인 묶음이 바뀐다. */
+export function openShare(path: string): Promise<Preview> {
+  return invoke<Preview>("open_share", { path });
+}
+
+/** 설치한다. "바꾸기"면 자동 백업 경로가 온다. */
+export function installShare(choice: InstallChoice): Promise<string | null> {
+  return invoke<string | null>("install_share", { choice });
+}
+
+/** 더블클릭으로 들어온 파일 (꺼내면 비워진다). */
+export function takeShareRequest(): Promise<string | null> {
+  return invoke<string | null>("take_share_request");
+}
+
+/** 앱이 켜져 있을 때 파일을 더블클릭하면 온다 (내용 없음, `takeShareRequest`로 꺼낸다). */
+export function onShareOpen(handler: () => void): Promise<UnlistenFn> {
+  return listen("share://open", () => handler());
+}
+
+/** 설정 파일 경로 (`lib.rs`의 `app_info`). */
+export async function configPath(): Promise<string> {
+  return (await invoke<{ configPath: string }>("app_info")).configPath;
+}
+
+/** 공유 파일 저장 위치 고르기. 취소하면 null. */
+export async function pickShareSave(defaultName: string): Promise<string | null> {
+  const picked = await save({ defaultPath: defaultName, filters: SHARE_FILTERS });
+  return picked ?? null;
+}
+
+/** 공유 파일 고르기. 취소하면 null. */
+export async function pickShareOpen(): Promise<string | null> {
+  const picked = await open({ multiple: false, directory: false, filters: SHARE_FILTERS });
+  return typeof picked === "string" ? picked : null;
+}
+
+/** 경로의 부모 폴더. */
+export function parentFolder(path: string): string {
+  const i = Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/"));
+  if (i <= 0) return path;
+  const dir = path.slice(0, i);
+  // 드라이브 맨 위면 "C:" 뒤에 \를 붙인다
+  return /^[a-z]:$/i.test(dir) ? dir + "\\" : dir;
 }

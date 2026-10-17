@@ -321,6 +321,27 @@ export const en: Dict = {
         text: "Text to type",
         placeholder: "Multiple lines are fine",
         incomplete: "Enter the text to type.",
+        insert: "Insert",
+        insertItems: {
+          date: "Date",
+          dateLong: "Long date",
+          dateShort: "Short date",
+          time: "Time",
+          weekday: "Weekday",
+          clipboard: "Clipboard",
+        },
+        // Example shown next to the Clipboard item in the Insert menu
+        clipboardExample: "copied text",
+        previewLabel: "Pressing it types:",
+        // The preview never reads the clipboard; it shows this instead
+        clipboardSample: "(copied text)",
+        method: "How to send",
+        methodPaste: "Paste (recommended)",
+        methodType: "Type it out",
+        methodTypeHint: "For places where pasting doesn't work (some games, remote screens, fields that block pasting)",
+        multilineWarnTitle: "Line breaks are sent as Enter",
+        multilineWarnBody: "Type it out presses Enter at each line break. In chat windows, each line may be sent as its own message.",
+        switchToPaste: "Switch to Paste",
       },
       media: { command: "Action" },
       stopSounds: {

@@ -7,7 +7,7 @@
 //! - Shift + 넘패드에서 가짜 Shift 이벤트가 어떻게 보이는가
 //! - 콜백 처리 시간이 충분히 짧은가
 //!
-//! 사용법: deck-probe [--quiet] [--loop-test] [--reinstall-secs N] [--config [--config-file PATH] [--run]] | --mics [--mute-test] | --record | --apps
+//! 사용법: deck-probe [--quiet] [--loop-test] [--reinstall-secs N] [--config [--config-file PATH] [--run]] | --mics [--mute-test] | --record | --apps | --clipboard | --type-test [long]
 //!   --quiet           판정 기록 없이 버튼 실행과 NumLock 불일치만 출력.
 //!                     통계(불일치 횟수, 최대 콜백)는 그대로 집계한다.
 //!   --loop-test       버튼이 실행될 때마다 넘패드 5(VK_CLEAR)를 주입해
@@ -22,6 +22,10 @@
 //!   --mute-test       --mics와 함께: 장치마다 음소거 → 3초 대기 → 원래대로를 차례로 한다.
 //!   --record          단축키 녹화를 한 번 해 보고 결과를 출력한 뒤 끝낸다.
 //!   --apps            설치된 앱 목록(편집기의 앱 고르기와 같은 것)을 출력한다.
+//!   --clipboard       문장 붙여넣기의 클립보드 보관을 해 보고 결과만 출력한다(내용은 출력하지 않음).
+//!   --type-test       직접 입력 확인: 5초 뒤 앞에 있는 창에 시험 문장 3줄을 문장 버튼의 직접
+//!                     입력과 같은 방식(`inject::text`)으로 보내고 걸린 시간을 출력한다(그 사이 대상
+//!                     창을 누른다). `long`이면 10줄 약 1000자.
 //!
 //! 끝내려면 Ctrl+C.
 
@@ -100,6 +104,22 @@ fn main() -> ExitCode {
     }
     if raw.iter().any(|a| a == "--record") {
         return record_once();
+    }
+    if raw.iter().any(|a| a == "--clipboard") {
+        return match deck_core::clipboard::snapshot() {
+            Ok(snapshot) => {
+                let (formats, bytes) = snapshot.summary();
+                println!("보관 성공: 형식 {formats}개, {bytes}바이트");
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("보관 실패: {e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    if let Some(i) = raw.iter().position(|a| a == "--type-test") {
+        return type_test(raw.get(i + 1).is_some_and(|a| a == "long"));
     }
     if raw.iter().any(|a| a == "--apps") {
         return match deck_core::action::with_com(deck_core::action::apps::list) {
@@ -270,6 +290,33 @@ fn start_executor() -> std::io::Result<Executor> {
         }
     });
     Ok(executor)
+}
+
+/// 직접 입력 확인. 문장 버튼의 직접 입력과 같은 함수로 보낸다.
+fn type_test(long: bool) -> ExitCode {
+    const TEXT: &str = "안녕하세요.\n주문 확인했습니다.(2026-10-18 02:40)\n감사합니다.";
+    let text = if long {
+        let line = "가나다라마바사아자차카타파하 ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789 ";
+        (1..=10)
+            .map(|n| format!("{n:02} {line}{line}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        TEXT.to_string()
+    };
+    println!(
+        "{}줄 {}자: 5초 안에 대상 창(엑셀 칸·메모장)을 누르세요.",
+        text.lines().count(),
+        text.chars().count()
+    );
+    for n in (1..=5).rev() {
+        println!("{n}…");
+        std::thread::sleep(Duration::from_secs(1));
+    }
+    let started = Instant::now();
+    let result = inject::text(&text);
+    println!("보냄: {:?}, {}ms", result, started.elapsed().as_millis());
+    ExitCode::SUCCESS
 }
 
 /// 단축키 녹화를 한 번 해 본다. 녹화 중에는 모든 키가 막힌다 (5초 동안 키가 없으면 끝).

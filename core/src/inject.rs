@@ -50,13 +50,26 @@ pub fn hotkey(keys: &[HotkeyKey]) -> windows::core::Result<()> {
 
 /// 글자를 입력한다. 한글 입력기 상태와 무관하게 그대로 입력되도록 유니코드로 보낸다.
 /// 줄바꿈과 탭은 앱이 키로 처리하도록 Enter·Tab 키로 보낸다.
+///
+/// 한 번에 몰아 보내지 않고 [`type_plan`]대로 나눠 사이에 [`TYPE_PAUSE`]만큼 쉰다. 엑셀은 칸의
+/// 첫 글자로 편집을 시작하는 사이 뒤 글자가 오면 첫 글자를 앞에서 친 글자로 바꾸고, 새 메모장은
+/// Enter와 뒤 글자가 붙어 오면 순서를 섞는다(직접 입력 진단 `deck-probe --type-test`로 실측).
+/// 그래서 줄마다 쉬는 동안 부른 스레드를 막는다(실측 3줄 약 0.2초, 10줄 약 1.5초 — Windows의
+/// sleep이 요청보다 길게 쉰다).
 pub fn text(text: &str) -> windows::core::Result<()> {
     let mut inputs = release_held_modifiers();
-    for c in text.chars() {
-        match c {
-            '\r' => {}
-            '\n' | '\t' => {
-                let vk = if c == '\n' { 0x0D } else { 0x09 };
+    for piece in type_plan(text) {
+        match piece {
+            TypePiece::Chars(chars) => {
+                for c in chars.chars() {
+                    let mut units = [0u16; 2];
+                    for &unit in c.encode_utf16(&mut units).iter() {
+                        inputs.push(unicode_input(unit, false));
+                        inputs.push(unicode_input(unit, true));
+                    }
+                }
+            }
+            TypePiece::Key(vk) => {
                 let key = HotkeyKey {
                     vk,
                     extended: false,
@@ -64,15 +77,94 @@ pub fn text(text: &str) -> windows::core::Result<()> {
                 inputs.push(key_input(key, false));
                 inputs.push(key_input(key, true));
             }
-            _ => {
-                let mut units = [0u16; 2];
-                for &unit in c.encode_utf16(&mut units).iter() {
-                    inputs.push(unicode_input(unit, false));
-                    inputs.push(unicode_input(unit, true));
-                }
+            TypePiece::Pause => {
+                send(&std::mem::take(&mut inputs))?;
+                std::thread::sleep(TYPE_PAUSE);
             }
         }
     }
+    send(&inputs)
+}
+
+/// [`text`]에서 나눠 보낸 조각 사이에 쉬는 시간. 30ms로 엑셀·새 메모장이 정상이었다.
+const TYPE_PAUSE: std::time::Duration = std::time::Duration::from_millis(30);
+
+/// 글자 입력의 한 조각.
+#[derive(Debug, PartialEq, Eq)]
+enum TypePiece<'a> {
+    /// 유니코드로 이어 보내는 글자.
+    Chars(&'a str),
+    /// 앱이 키로 처리하는 Enter(`0x0D`)·Tab(`0x09`).
+    Key(u16),
+    /// 앞까지 보내고 쉰다.
+    Pause,
+}
+
+/// 글자를 보내는 차례. 칸·줄을 바꾸는 Enter·Tab은 앞뒤로 쉬고, 줄(칸)의 첫 글자는 따로 보낸
+/// 뒤 쉰다. 나머지 글자는 한 번에 보낸다(`\r`은 버린다).
+fn type_plan<'a>(text: &'a str) -> Vec<TypePiece<'a>> {
+    let mut plan = Vec::new();
+    // 이어 보낼 글자 묶음의 시작 위치.
+    let mut run: Option<usize> = None;
+    let mut line_start = true;
+    let flush = |plan: &mut Vec<TypePiece<'a>>, run: &mut Option<usize>, end: usize| {
+        if let Some(start) = run.take() {
+            plan.push(TypePiece::Chars(&text[start..end]));
+        }
+    };
+    for (i, c) in text.char_indices() {
+        match c {
+            '\r' => flush(&mut plan, &mut run, i),
+            '\n' | '\t' => {
+                flush(&mut plan, &mut run, i);
+                let vk = if c == '\n' { 0x0D } else { 0x09 };
+                if plan.last() != Some(&TypePiece::Pause) {
+                    plan.push(TypePiece::Pause);
+                }
+                plan.extend([TypePiece::Key(vk), TypePiece::Pause]);
+                line_start = true;
+            }
+            _ if line_start => {
+                plan.extend([
+                    TypePiece::Chars(&text[i..i + c.len_utf8()]),
+                    TypePiece::Pause,
+                ]);
+                line_start = false;
+            }
+            _ => {
+                run.get_or_insert(i);
+            }
+        }
+    }
+    flush(&mut plan, &mut run, text.len());
+    // 처음·끝의 쉼은 기다릴 것이 없다.
+    if plan.first() == Some(&TypePiece::Pause) {
+        plan.remove(0);
+    }
+    while plan.last() == Some(&TypePiece::Pause) {
+        plan.pop();
+    }
+    plan
+}
+
+/// 붙여넣기(Ctrl+V)를 보낸다. 사용자가 누르고 있던 보조 키는 먼저 뗀다. 그대로 두면
+/// Shift가 섞여 `Ctrl+Shift+V`(서식 없이 붙여넣기 등 다른 동작)가 된다.
+pub fn paste_shortcut() -> windows::core::Result<()> {
+    let ctrl = HotkeyKey {
+        vk: 0xA2, // VK_LCONTROL
+        extended: false,
+    };
+    let v = HotkeyKey {
+        vk: 0x56, // 'V'
+        extended: false,
+    };
+    let mut inputs = release_held_modifiers();
+    inputs.extend([
+        key_input(ctrl, false),
+        key_input(v, false),
+        key_input(v, true),
+        key_input(ctrl, true),
+    ]);
     send(&inputs)
 }
 
@@ -157,5 +249,105 @@ fn send(inputs: &[INPUT]) -> windows::core::Result<()> {
     } else {
         // UIPI로 막히면 여기로 온다 (관리자 권한 창이 포그라운드일 때).
         Err(windows::core::Error::from_thread())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TypePiece::{Chars, Key, Pause};
+    use super::*;
+
+    #[test]
+    fn single_line_sends_first_char_alone() {
+        assert_eq!(
+            type_plan("안녕하세요."),
+            [Chars("안"), Pause, Chars("녕하세요.")]
+        );
+        assert_eq!(type_plan("a"), [Chars("a")]);
+        assert_eq!(type_plan(""), []);
+    }
+
+    #[test]
+    fn enter_and_tab_are_keys_with_pauses_around() {
+        assert_eq!(
+            type_plan("ab\ncd\tef"),
+            [
+                Chars("a"),
+                Pause,
+                Chars("b"),
+                Pause,
+                Key(0x0D),
+                Pause,
+                Chars("c"),
+                Pause,
+                Chars("d"),
+                Pause,
+                Key(0x09),
+                Pause,
+                Chars("e"),
+                Pause,
+                Chars("f"),
+            ]
+        );
+    }
+
+    #[test]
+    fn carriage_returns_are_dropped() {
+        assert_eq!(
+            type_plan("ab\r\ncd\r"),
+            [
+                Chars("a"),
+                Pause,
+                Chars("b"),
+                Pause,
+                Key(0x0D),
+                Pause,
+                Chars("c"),
+                Pause,
+                Chars("d")
+            ]
+        );
+        assert_eq!(type_plan("a\rb"), [Chars("a"), Pause, Chars("b")]);
+        assert_eq!(type_plan("\r"), []);
+        assert_eq!(
+            type_plan("\t가나"),
+            [Key(0x09), Pause, Chars("가"), Pause, Chars("나")]
+        );
+    }
+
+    #[test]
+    fn empty_lines_and_edges_have_no_double_or_edge_pauses() {
+        assert_eq!(
+            type_plan("\na\n\n"),
+            [
+                Key(0x0D),
+                Pause,
+                Chars("a"),
+                Pause,
+                Key(0x0D),
+                Pause,
+                Key(0x0D)
+            ]
+        );
+    }
+
+    #[test]
+    fn first_char_keeps_surrogate_pairs_whole() {
+        assert_eq!(type_plan("😀x"), [Chars("😀"), Pause, Chars("x")]);
+    }
+
+    #[test]
+    fn plan_keeps_every_char_in_order() {
+        let text = "안녕\r\n주문 (2026-10-18 02:40)\t😀끝\n";
+        let mut rebuilt = String::new();
+        for piece in type_plan(text) {
+            match piece {
+                Chars(s) => rebuilt.push_str(s),
+                Key(0x0D) => rebuilt.push('\n'),
+                Key(_) => rebuilt.push('\t'),
+                Pause => {}
+            }
+        }
+        assert_eq!(rebuilt, text.replace('\r', ""));
     }
 }

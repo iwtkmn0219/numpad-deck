@@ -7,7 +7,7 @@
 //! - Shift + 넘패드에서 가짜 Shift 이벤트가 어떻게 보이는가
 //! - 콜백 처리 시간이 충분히 짧은가
 //!
-//! 사용법: deck-probe [--quiet] [--loop-test] [--reinstall-secs N] [--config [--config-file PATH] [--run]] | --mics [--mute-test] | --record | --apps
+//! 사용법: deck-probe [--quiet] [--loop-test] [--reinstall-secs N] [--config [--config-file PATH] [--run]] | --mics [--mute-test] | --record | --apps | --clipboard
 //!   --quiet           판정 기록 없이 버튼 실행과 NumLock 불일치만 출력.
 //!                     통계(불일치 횟수, 최대 콜백)는 그대로 집계한다.
 //!   --loop-test       버튼이 실행될 때마다 넘패드 5(VK_CLEAR)를 주입해
@@ -22,6 +22,7 @@
 //!   --mute-test       --mics와 함께: 장치마다 음소거 → 3초 대기 → 원래대로를 차례로 한다.
 //!   --record          단축키 녹화를 한 번 해 보고 결과를 출력한 뒤 끝낸다.
 //!   --apps            설치된 앱 목록(편집기의 앱 고르기와 같은 것)을 출력한다.
+//!   --clipboard       문장 붙여넣기의 클립보드 보관을 해 보고 결과만 출력한다(내용은 출력하지 않음).
 //!
 //! 끝내려면 Ctrl+C.
 
@@ -100,6 +101,19 @@ fn main() -> ExitCode {
     }
     if raw.iter().any(|a| a == "--record") {
         return record_once();
+    }
+    if raw.iter().any(|a| a == "--clipboard") {
+        return match deck_core::clipboard::snapshot() {
+            Ok(snapshot) => {
+                let (formats, bytes) = snapshot.summary();
+                println!("보관 성공: 형식 {formats}개, {bytes}바이트");
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("보관 실패: {e}");
+                ExitCode::FAILURE
+            }
+        };
     }
     if raw.iter().any(|a| a == "--apps") {
         return match deck_core::action::with_com(deck_core::action::apps::list) {

@@ -57,6 +57,14 @@ pub struct Snapshot {
     formats: Vec<(u32, Vec<u8>)>,
 }
 
+impl Snapshot {
+    /// 보관한 형식 수와 합계 바이트(진단용).
+    pub fn summary(&self) -> (usize, usize) {
+        let bytes = self.formats.iter().map(|(_, b)| b.len()).sum();
+        (self.formats.len(), bytes)
+    }
+}
+
 /// 클립보드의 글자(`CF_UNICODETEXT`)를 읽는다. `\r\n`은 `\n`으로 바꾼다.
 /// 열기 실패·글자 없음(비었음, 그림만 있음)·빈 글자면 `None`.
 pub fn read_text() -> Option<String> {
@@ -100,13 +108,18 @@ pub fn snapshot() -> Result<Snapshot, String> {
             continue;
         }
         // OLE 데이터 객체 정보는 소유자 없이 되돌리면 낡은 정보가 남아 OleGetClipboard가
-        // 잘못 쓸 수 있다. 이름으로 가린다.
-        if format_name(format).is_some_and(|name| should_skip_format_name(&name)) {
+        // 잘못 쓸 수 있다. 가상 파일 형식은 OLE로만 읽힌다. 둘 다 이름으로 가린다.
+        let name = format_name(format);
+        if name.as_deref().is_some_and(should_skip_format_name) {
             continue;
         }
+        let label = match &name {
+            Some(name) => format!("{format} \"{name}\""),
+            None => format.to_string(),
+        };
         let handle = unsafe { GetClipboardData(format) }
-            .map_err(|e| win_error(&format!("GetClipboardData({format})"), &e))?;
-        let locked = Locked::new(HGLOBAL(handle.0)).map_err(|e| format!("format {format}: {e}"))?;
+            .map_err(|e| win_error(&format!("GetClipboardData({label})"), &e))?;
+        let locked = Locked::new(HGLOBAL(handle.0)).map_err(|e| format!("format {label}: {e}"))?;
         let bytes = locked.bytes();
         total = total.saturating_add(bytes.len());
         if !within_limit(total) {
@@ -229,9 +242,20 @@ fn should_skip_format(format: u32) -> bool {
         || in_range(CF_GDIOBJFIRST.0, CF_GDIOBJLAST.0)
 }
 
-/// 이름으로 보관하지 않는 등록 형식. OLE 클립보드가 쓰는 데이터 객체 정보다.
+/// 이름으로 보관하지 않는 등록 형식. OLE 클립보드가 쓰는 데이터 객체 정보와 가상 파일이다.
+/// `FileContents`는 OLE 스트림으로만 주므로(탐색기에서 파일을 복사하면 생기고
+/// GetClipboardData는 NULL) 읽을 수 없고, 내용 없이 되돌린 `FileGroupDescriptor(W)`는 받을 수
+/// 없는 파일을 알려 붙여넣는 앱이 실패할 수 있다. 파일은 `CF_HDROP`·`Shell IDList Array`로
+/// 되살아난다.
 fn should_skip_format_name(name: &str) -> bool {
-    matches!(name, "DataObject" | "Ole Private Data")
+    matches!(
+        name,
+        "DataObject"
+            | "Ole Private Data"
+            | "FileContents"
+            | "FileGroupDescriptor"
+            | "FileGroupDescriptorW"
+    )
 }
 
 /// 등록 형식의 이름. 미리 정의된 형식이나 실패면 `None`.
@@ -416,6 +440,10 @@ mod tests {
     fn skips_ole_private_format_names() {
         assert!(should_skip_format_name("DataObject"));
         assert!(should_skip_format_name("Ole Private Data"));
+        assert!(should_skip_format_name("FileContents"));
+        assert!(should_skip_format_name("FileGroupDescriptor"));
+        assert!(should_skip_format_name("FileGroupDescriptorW"));
+        assert!(!should_skip_format_name("FileNameW"));
         assert!(!should_skip_format_name("HTML Format"));
         assert!(!should_skip_format_name("Rich Text Format"));
         assert!(!should_skip_format_name("dataobject"));

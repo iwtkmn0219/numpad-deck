@@ -24,6 +24,7 @@ use crate::inject;
 use crate::keys;
 
 pub use audio::Audio;
+pub use shell::expand_env;
 
 #[derive(Debug, Clone)]
 pub enum ExecEvent {

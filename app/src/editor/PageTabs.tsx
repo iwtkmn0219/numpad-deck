@@ -30,10 +30,14 @@ interface Props {
   page: number;
   onSelect: (page: number) => void;
   update: (recipe: (draft: Config) => void, coalesce?: string) => void;
+  /** 이 페이지를 파일로 내보내기 */
+  onExport: (page: number) => void;
+  /** 공유 파일 골라 가져오기 */
+  onImport: () => void;
 }
 
 /** 페이지 탭: 고르기, 추가, 이름 바꾸기(두 번 클릭), 순서 바꾸기, 삭제. */
-export function PageTabs({ config, page, onSelect, update }: Props) {
+export function PageTabs({ config, page, onSelect, update, onExport, onImport }: Props) {
   const t = useT().editor;
   const [renaming, setRenaming] = useState<number | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
@@ -139,6 +143,7 @@ export function PageTabs({ config, page, onSelect, update }: Props) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
               <DropdownMenuItem onSelect={() => setRenaming(i)}>{t.pageMenu.rename}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onExport(i)}>{t.share.exportPage}</DropdownMenuItem>
               <DropdownMenuItem disabled={i === 0} onSelect={() => move(i, i - 1)}>
                 {t.pageMenu.moveLeft}
               </DropdownMenuItem>
@@ -167,6 +172,7 @@ export function PageTabs({ config, page, onSelect, update }: Props) {
         <DropdownMenuContent align="start">
           <DropdownMenuItem onSelect={addPage}>{t.addEmptyPage}</DropdownMenuItem>
           <DropdownMenuItem onSelect={() => setPresetOpen(true)}>{t.addPresetPage}</DropdownMenuItem>
+          <DropdownMenuItem onSelect={onImport}>{t.share.importFile}</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <PresetDialog open={presetOpen} onOpenChange={setPresetOpen} onAdd={addPresetPage} layout={config.layout} systemKeys={config.systemKeys} />

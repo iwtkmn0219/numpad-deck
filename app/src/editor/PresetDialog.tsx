@@ -4,7 +4,7 @@ import type { Lang } from "@/bindings/Lang";
 import type { Page } from "@/bindings/Page";
 import type { Preset } from "@/bindings/Preset";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useLang, useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { buttonIcon, Icon } from "@/shared/icons";
@@ -53,7 +53,7 @@ export function PresetDialog({ open, onOpenChange, onAdd, layout, systemKeys }: 
           <DialogTitle>{t.title}</DialogTitle>
           <DialogDescription>{t.body}</DialogDescription>
         </DialogHeader>
-        <div className="flex gap-4">
+        <DialogBody className="flex gap-4">
           <ul className="w-48 shrink-0 space-y-1">
             {presets.map((p, i) => (
               <li key={p.id}>
@@ -78,7 +78,7 @@ export function PresetDialog({ open, onOpenChange, onAdd, layout, systemKeys }: 
               </div>
             </div>
           )}
-        </div>
+        </DialogBody>
       </DialogContent>
     </Dialog>
   );

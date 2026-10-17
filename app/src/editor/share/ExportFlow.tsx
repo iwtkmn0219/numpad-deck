@@ -166,7 +166,7 @@ function CheckBody({ report, t }: { report: ExportReport; t: Dict["editor"]["sha
 
 function FileList({ files }: { files: string[] }) {
   return (
-    <ul className="mt-1 max-h-32 space-y-0.5 overflow-y-auto rounded-md bg-muted px-2.5 py-1.5 font-mono text-xs break-all">
+    <ul className="mt-1 space-y-0.5 rounded-md bg-muted px-2.5 py-1.5 font-mono text-xs break-all">
       {files.map((f) => (
         <li key={f}>{f}</li>
       ))}

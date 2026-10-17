@@ -49,7 +49,7 @@ export function AppPickerDialog({ open, onOpenChange, onPick }: Props) {
             }}
           />
         </div>
-        <div className="-mx-2 h-80 overflow-y-auto">
+        <div className="-mx-3 h-80 min-h-0 overflow-y-auto px-1 py-1">
           {error ? (
             <p className="p-2 text-sm text-destructive">{error}</p>
           ) : !apps ? (

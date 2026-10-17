@@ -3,7 +3,7 @@ import type { Config } from "@/bindings/Config";
 import type { KeyPlace } from "@/bindings/KeyPlace";
 import type { LayoutKeyName } from "@/bindings/LayoutKeyName";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 import type { SystemKeys } from "@/bindings/SystemKeys";
@@ -173,7 +173,7 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
           <DialogTitle>{t.title}</DialogTitle>
           <DialogDescription>{t.body}</DialogDescription>
         </DialogHeader>
-        <div className="flex gap-5">
+        <DialogBody className="flex gap-5">
           <div
             ref={canvas}
             className="relative shrink-0 rounded-xl bg-muted"
@@ -292,7 +292,7 @@ export function LayoutEditor({ open, onOpenChange, config, update }: Props) {
             )}
             {notice && <p className="text-destructive">{notice}</p>}
           </div>
-        </div>
+        </DialogBody>
         <div className="flex justify-between">
           <Button
             variant="outline"

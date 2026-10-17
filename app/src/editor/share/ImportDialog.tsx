@@ -18,7 +18,15 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { buttonIcon, Icon } from "@/shared/icons";
@@ -89,11 +97,8 @@ export function ImportDialog({ preview, config, onClose, beforeInstall, endInsta
 
   return (
     <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
-      {/*
-        너비: 기본 grid의 auto 열은 한 줄(truncate) 글자의 최소 너비까지 넓어져 내용이 창 밖으로 나간다 → 세로 flex로 바꿔 열 너비를 창에 맞춘다.
-        높이: 창 높이에 여백을 두고, 머리·꼬리는 항상 보이고 가운데(body)만 스크롤한다. 최소 창(900×620)에서도 마찬가지.
-      */}
-      <DialogContent className="flex max-h-[calc(100%-2rem)] flex-col sm:max-w-[min(56rem,calc(100%-2rem))]">
+      {/* 너비는 창에 여백을 둔 만큼(최소 창 900px에서도). 높이·스크롤은 DialogContent·DialogBody가 맡는다. */}
+      <DialogContent className="sm:max-w-[min(56rem,calc(100%-2rem))]">
         <DialogHeader>
           <DialogTitle>{isBackup ? t.import.titleBackup : t.import.titlePages}</DialogTitle>
           <DialogDescription>{t.import.body(preview.app)}</DialogDescription>
@@ -106,7 +111,7 @@ export function ImportDialog({ preview, config, onClose, beforeInstall, endInsta
           </p>
         )}
 
-        <div className="-m-1 flex min-h-0 flex-1 gap-4 overflow-y-auto p-1">
+        <DialogBody className="flex gap-4">
           <div className="w-52 shrink-0 space-y-1">
             <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground">
               <input
@@ -156,7 +161,7 @@ export function ImportDialog({ preview, config, onClose, beforeInstall, endInsta
               <ButtonList page={current.page} notes={current.notes} />
             </div>
           )}
-        </div>
+        </DialogBody>
 
         {error && <p className="text-sm break-all text-destructive">{error}</p>}
 

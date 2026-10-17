@@ -968,14 +968,18 @@ pub fn backup_config(
         made.push(&npdeck_dest);
     }
     if mode != BackupMode::Export {
-        if let Err(e) = std::fs::copy(config_path, &json_dest) {
-            // 반쪽만 남기지 않는다
-            if mode == BackupMode::Both {
-                let _ = std::fs::remove_file(&npdeck_dest);
+        match std::fs::copy(config_path, &json_dest) {
+            Ok(_) => made.push(&json_dest),
+            // 깨진 것을 본 뒤 파일이 지워졌다: 남길 원본이 없을 뿐이니 .npdeck만으로 성공이다
+            Err(e) if mode == BackupMode::Both && e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                // 반쪽만 남기지 않는다
+                if mode == BackupMode::Both {
+                    let _ = std::fs::remove_file(&npdeck_dest);
+                }
+                return Err(io_err(e));
             }
-            return Err(io_err(e));
         }
-        made.push(&json_dest);
     }
 
     let mut all: Vec<((String, u32), PathBuf)> = std::fs::read_dir(&dir)
@@ -2193,6 +2197,51 @@ mod tests {
         assert!(last.exists() && last.with_extension("json").exists());
         assert_eq!(std::fs::read_dir(p.parent().unwrap()).unwrap().count(), 10);
         assert!(!p.exists());
+    }
+
+    #[test]
+    fn backup_both_without_raw_file_keeps_npdeck() {
+        let dir = tempfile::tempdir().unwrap();
+        let (path, cfg, dirs) = backup_fixture(dir.path(), b"{ broken");
+        std::fs::remove_file(&path).unwrap();
+        let p = backup_config(
+            &path,
+            &cfg,
+            BackupMode::Both,
+            "0.6.0",
+            &dirs,
+            minute_after(0),
+        )
+        .unwrap();
+        assert_eq!(p.extension().unwrap(), "npdeck");
+        assert_eq!(read(&p).unwrap().manifest.pages[0].name, "A");
+        assert!(!p.with_extension("json").exists());
+        // 원본만 복사하는 Raw는 파일이 없으면 여전히 실패한다
+        let r = backup_config(
+            &path,
+            &cfg,
+            BackupMode::Raw,
+            "0.6.0",
+            &dirs,
+            minute_after(1),
+        );
+        assert!(matches!(r, Err(ShareError::Io(_))), "{r:?}");
+        // NotFound가 아닌 복사 오류(원본이 폴더)는 Both에서도 실패하고 .npdeck을 남기지 않는다
+        std::fs::create_dir(&path).unwrap();
+        let before = std::fs::read_dir(p.parent().unwrap()).unwrap().count();
+        let r = backup_config(
+            &path,
+            &cfg,
+            BackupMode::Both,
+            "0.6.0",
+            &dirs,
+            minute_after(2),
+        );
+        assert!(r.is_err());
+        assert_eq!(
+            std::fs::read_dir(p.parent().unwrap()).unwrap().count(),
+            before
+        );
     }
 
     #[test]

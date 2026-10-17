@@ -40,7 +40,7 @@ import { ImportDialog } from "./share/ImportDialog";
 
 export function Editor() {
   const t = useT().editor;
-  const { config, status, update, adopt, flush, forgetHistory, undo, redo, canUndo, canRedo } = useEditorConfig();
+  const { config, status, update, adopt, beginInstall, endInstall, forgetHistory, undo, redo, canUndo, canRedo } = useEditorConfig();
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Selection | null>({ kind: "button", key: "7" });
 
@@ -204,8 +204,9 @@ export function Editor() {
           preview={preview}
           config={config}
           onClose={() => setPreview(null)}
-          beforeInstall={flush}
-          onInstalled={(id, mode, count, backup) => void onInstalled(id, mode, count, backup)}
+          beforeInstall={beginInstall}
+          endInstall={endInstall}
+          onInstalled={onInstalled}
         />
       )}
 

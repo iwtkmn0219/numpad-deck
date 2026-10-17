@@ -42,6 +42,12 @@ export function useEditorConfig() {
   const pending = useRef<Config | null>(null);
   /** 진행 중인 저장의 끝. 저장은 이 줄에 이어 붙여 하나씩만 한다. */
   const inflight = useRef<Promise<void>>(Promise.resolve());
+  /** `adopt`할 때마다 늘린다. 그 전에 줄 선 저장은 새 설정을 덮어쓰지 않도록 건너뛴다. */
+  const generation = useRef(0);
+  /** 마지막 저장이 실패했고 그 내용이 아직 저장되지 않았다 (`flush`가 알려 준다) */
+  const saveFailed = useRef(false);
+  /** 파일 가져오기를 설치하는 동안 true. 되돌리기·다시 실행을 막는다 (`beginInstall`) */
+  const installing = useRef(false);
   /** 마지막으로 저장한(또는 받아 온) 내용. 같은 내용을 다시 저장하거나 받지 않게. */
   const lastSaved = useRef<string>("");
   /** 마지막 변경의 묶음 키와 시각 (글자 입력을 기록 하나로 묶기 위해) */
@@ -57,17 +63,23 @@ export function useEditorConfig() {
 
   /** 저장한다. 앞선 저장이 끝난 뒤에 시작하고, 실패는 상태로만 알린다 (거부되지 않는다). */
   const persist = useCallback((next: Config) => {
+    const gen = generation.current;
     inflight.current = inflight.current.then(async () => {
+      // 줄 서 있는 사이 설정이 통째로 바뀌었으면(가져오기) 옛 내용을 쓰지 않는다
+      if (gen !== generation.current) return;
       const text = canonical(next);
       if (text === lastSaved.current) {
+        saveFailed.current = false;
         setStatus({ kind: "saved" });
         return;
       }
       try {
         await saveConfig(next);
         lastSaved.current = text;
+        saveFailed.current = false;
         setStatus({ kind: "saved" });
       } catch (reason) {
+        saveFailed.current = true;
         setStatus({ kind: "failed", reason: String(reason) });
       }
     });
@@ -88,8 +100,7 @@ export function useEditorConfig() {
 
   /**
    * 예약된 저장을 기다리지 않고 지금 하고, 진행 중인 저장까지 끝날 때까지 기다린다.
-   * 코어가 설정을 바꾸기 전(파일 가져오기)에 불러서, 마지막 고침이 백업·추가에 들어가고
-   * 늦은 저장이 새 설정을 덮어쓰지 않게 한다.
+   * 편집한 내용이 모두 저장됐으면 true, 저장하지 못했으면 false.
    */
   const flush = useCallback(async () => {
     window.clearTimeout(timer.current);
@@ -97,7 +108,24 @@ export function useEditorConfig() {
     pending.current = null;
     if (next) persist(next);
     await inflight.current;
+    return !saveFailed.current;
   }, [persist]);
+
+  /**
+   * 코어가 설정을 바꾸기 전(파일 가져오기)에 부른다. 되돌리기·다시 실행을 막고 마지막 고침을
+   * 저장해서 백업·추가에 들어가게 하고, 늦은 저장이 새 설정을 덮어쓰지 않게 한다.
+   * 저장하지 못했으면 false를 돌려주고 막은 것도 푼다. true면 `endInstall`로 풀어야 한다.
+   */
+  const beginInstall = useCallback(async () => {
+    installing.current = true;
+    const saved = await flush();
+    if (!saved) installing.current = false;
+    return saved;
+  }, [flush]);
+
+  const endInstall = useCallback(() => {
+    installing.current = false;
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -110,6 +138,7 @@ export function useEditorConfig() {
       const text = canonical(c);
       if (text === lastSaved.current) return;
       lastSaved.current = text;
+      saveFailed.current = false; // 밖에서 온 내용으로 바뀌어 저장 못 한 편집은 사라졌다
       if (Date.now() < forgetUntil.current) {
         forgetUntil.current = 0;
         past.current = [];
@@ -157,6 +186,8 @@ export function useEditorConfig() {
       // 가져오기 전 내용의 저장 예약이 새 설정을 덮어쓰지 않게
       window.clearTimeout(timer.current);
       pending.current = null;
+      generation.current += 1;
+      saveFailed.current = false;
       setStatus({ kind: "saved" });
       const text = canonical(next);
       // 파일 감시가 먼저 같은 내용을 보내왔으면 기록은 이미 쌓였다
@@ -184,6 +215,7 @@ export function useEditorConfig() {
   }, []);
 
   const undo = useCallback(() => {
+    if (installing.current) return;
     const before = current.current;
     const previous = past.current.at(-1);
     if (!before || !previous) return;
@@ -195,6 +227,7 @@ export function useEditorConfig() {
   }, [show, scheduleSave]);
 
   const redo = useCallback(() => {
+    if (installing.current) return;
     const before = current.current;
     const next = future.current[0];
     if (!before || !next) return;
@@ -229,7 +262,8 @@ export function useEditorConfig() {
     status,
     update,
     adopt,
-    flush,
+    beginInstall,
+    endInstall,
     forgetHistory,
     undo,
     redo,

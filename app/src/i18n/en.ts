@@ -198,6 +198,7 @@ export const en: Dict = {
         missingTag: "Not on this PC",
         add: (count: number) => `Add as page${count === 1 ? "" : "s"} (${count})`,
         replace: "Replace my settings with this",
+        saveFailed: "Your latest edit could not be saved, so nothing was imported. Check the save status and try again.",
         close: "Close",
       },
       replace: {

@@ -30,20 +30,25 @@ interface Props {
   preview: Preview;
   config: Config;
   onClose: () => void;
-  /** 설치 직전에 부른다. 편집 중이던 저장을 끝내서 백업과 추가에 마지막 고침이 들어가게 한다. */
-  beforeInstall: () => Promise<void>;
+  /**
+   * 설치 직전에 부른다. 편집 중이던 저장을 끝내서 백업과 추가에 마지막 고침이 들어가게 하고,
+   * 설치가 끝날 때까지 되돌리기를 막는다. 저장하지 못했으면 false (설치하지 않는다).
+   */
+  beforeInstall: () => Promise<boolean>;
+  /** 설치가 끝나거나 실패하면 부른다 (`beforeInstall`이 막은 것을 푼다) */
+  endInstall: () => void;
   /**
    * 설치가 끝났다. `previewId`는 설치한 미리 보기(그 사이 새 파일이 열렸으면 지금 것과 다르다),
    * `count`는 넣은 페이지 수, `backup`은 "바꾸기"일 때 자동 백업 경로.
    */
-  onInstalled: (previewId: number, mode: InstallMode, count: number, backup: string | null) => void;
+  onInstalled: (previewId: number, mode: InstallMode, count: number, backup: string | null) => Promise<void>;
 }
 
 /**
  * 공유 파일 가져오기: 왼쪽 페이지 목록(체크), 오른쪽 고른 페이지 미리 보기.
  * 미리 보기가 바뀌면(다른 파일을 또 엶) 부모가 `key`로 새로 만든다.
  */
-export function ImportDialog({ preview, config, onClose, beforeInstall, onInstalled }: Props) {
+export function ImportDialog({ preview, config, onClose, beforeInstall, endInstall, onInstalled }: Props) {
   const tt = useT();
   const t = tt.editor.share;
   const [checked, setChecked] = useState<boolean[]>(() => preview.pages.map(() => true));
@@ -65,13 +70,20 @@ export function ImportDialog({ preview, config, onClose, beforeInstall, onInstal
   const install = async (mode: InstallMode) => {
     setBusy(true);
     setError(null);
+    // 편집 중이던 내용을 저장하지 못했으면 그 내용이 사라지지 않게 설치하지 않는다
+    if (!(await beforeInstall())) {
+      setError(t.import.saveFailed);
+      setBusy(false);
+      return;
+    }
     try {
-      await beforeInstall();
       const backup = await installShare({ previewId: preview.id, pages: picked, mode });
-      onInstalled(preview.id, mode, picked.length, backup);
+      await onInstalled(preview.id, mode, picked.length, backup);
     } catch (e) {
       setError(String(e));
       setBusy(false);
+    } finally {
+      endInstall();
     }
   };
 

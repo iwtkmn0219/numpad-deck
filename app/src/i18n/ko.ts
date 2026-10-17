@@ -192,6 +192,7 @@ export const ko = {
         missingTag: "이 PC에 없음",
         add: (count: number) => `페이지로 추가(${count}개)`,
         replace: "지금 설정을 이걸로 바꾸기",
+        saveFailed: "편집 중인 내용을 저장하지 못해서 가져오지 않았어요. 저장 상태를 확인한 뒤 다시 시도해 주세요.",
         close: "닫기",
       },
       replace: {

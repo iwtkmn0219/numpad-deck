@@ -74,7 +74,8 @@ export function ImportDialog({ preview, config, onClose, onInstalled }: Props) {
 
   return (
     <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
-      <DialogContent className="sm:max-w-4xl">
+      {/* 열을 minmax(0,1fr)로: 기본 auto 열은 한 줄(truncate) 글자의 최소 너비까지 넓어져 내용이 창 밖으로 나간다. 최소 창(900px)에서도 여백을 둔다. */}
+      <DialogContent className="grid-cols-[minmax(0,1fr)] sm:max-w-[min(56rem,calc(100%-2rem))]">
         <DialogHeader>
           <DialogTitle>{isBackup ? t.import.titleBackup : t.import.titlePages}</DialogTitle>
           <DialogDescription>{t.import.body(preview.app)}</DialogDescription>

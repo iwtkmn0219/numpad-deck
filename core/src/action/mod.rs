@@ -111,7 +111,7 @@ fn run_one(action: &Action, audio: &Audio, events: &Sender<ExecEvent>) -> Result
             let keys = keys::parse_all(keys)?;
             inject::hotkey(&keys).map_err(blocked)
         }
-        Action::Text { text } => inject::text(text).map_err(blocked),
+        Action::Text { text, .. } => inject::text(text).map_err(blocked),
         Action::Media { command } => inject::tap_vk(media_vk(*command), true).map_err(blocked),
         Action::Open { target } => shell::open(target),
         Action::Launch { target, args } => window::launch_or_focus(target, args.as_deref()),

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -362,6 +362,10 @@ function OpenForm({ action, onChange }: FormProps<Of<"open">>) {
 function TextForm({ action, onChange }: FormProps<Of<"text">>) {
   const f = useT().editor.forms.text;
   const lang = useLang();
+  // 묶음에서는 문장 단계가 여럿이라 id가 겹치지 않게 만든다
+  const uid = useId();
+  const bodyId = `${uid}-body`;
+  const previewId = `${uid}-preview`;
   const area = useRef<HTMLTextAreaElement>(null);
   const mirror = useRef<HTMLDivElement>(null);
   const pasteButton = useRef<HTMLButtonElement>(null);
@@ -432,10 +436,10 @@ function TextForm({ action, onChange }: FormProps<Of<"text">>) {
     }
   };
 
-  /** 커서가 덩어리 안이나 바로 뒤에 있거나 선택 영역이 겹치면 진하게 (덩어리째 지워진다는 예고) */
+  /** 커서가 덩어리 바로 뒤(Backspace)·바로 앞(Delete)에 있거나 선택 영역이 겹치면 진하게 (덩어리째 지워진다는 예고) */
   const isActive = (r: { start: number; end: number }) =>
     sel !== null &&
-    (sel.start === sel.end ? sel.start > r.start && sel.start <= r.end : sel.start < r.end && sel.end > r.start);
+    (sel.start === sel.end ? sel.start === r.start || sel.start === r.end : sel.start < r.end && sel.end > r.start);
 
   // 입력란 뒤에 까는 거울 층: 같은 글을 같은 모양으로 투명하게 놓고 자리표시자에만 바탕을 칠한다
   const mirrorParts: ReactNode[] = [];
@@ -464,7 +468,7 @@ function TextForm({ action, onChange }: FormProps<Of<"text">>) {
     <div className="space-y-4">
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
-          <Label htmlFor="text-body">{f.text}</Label>
+          <Label htmlFor={bodyId}>{f.text}</Label>
           {/* modal을 끄면 메뉴가 열린 동안에도 다른 곳이 눌린다 (언어 메뉴와 같게) */}
           <DropdownMenu modal={false} onOpenChange={(open) => open && setNow(new Date())}>
             <DropdownMenuTrigger asChild>
@@ -502,12 +506,12 @@ function TextForm({ action, onChange }: FormProps<Of<"text">>) {
           </div>
           <Textarea
             ref={area}
-            id="text-body"
+            id={bodyId}
             rows={4}
             value={action.text}
             placeholder={f.placeholder}
-            aria-describedby={showPreview ? "text-preview" : undefined}
-            className="relative bg-transparent dark:bg-transparent"
+            aria-describedby={showPreview ? previewId : undefined}
+            className="relative resize-none bg-transparent dark:bg-transparent"
             onFocus={() => {
               focused.current = true;
               readSel();
@@ -526,7 +530,7 @@ function TextForm({ action, onChange }: FormProps<Of<"text">>) {
         </div>
         {showPreview && (
           <div
-            id="text-preview"
+            id={previewId}
             aria-live="polite"
             className="flex flex-col gap-1.5 rounded-[10px] border border-border bg-background px-3 py-2.5"
           >

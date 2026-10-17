@@ -9,7 +9,8 @@ use std::sync::{Arc, Mutex};
 use deck_core::action::{apps, with_com};
 use deck_core::i18n::tr;
 use deck_core::share::{
-    self, Bundle, ExportReport, InstallChoice, InstallMode, Preview, Probe, Selection, UserDirs,
+    self, BackupMode, Bundle, ExportReport, InstallChoice, InstallMode, Preview, Probe, Selection,
+    UserDirs,
 };
 use tauri::{AppHandle, State};
 
@@ -154,13 +155,12 @@ pub async fn install_share(
             }
         }
     };
-    let config = runtime.config();
     let config_path = runtime.config_path().to_path_buf();
     let version = app.package_info().version.to_string();
-    // 설정 파일이 깨져 기본값으로 떠 있으면 디스크의 원본을 그대로 백업해야 한다
-    let broken = runtime.config_error().is_some();
+    // 설정과 백업 방식은 한 번에 읽는다 (설정 파일이 깨졌으면 원본 .json도 남긴다)
+    let (config, backup_mode) = runtime.backup_source();
     // 바꾸기이거나 설정 파일이 깨져 있으면 덮어쓰기 전에 백업한다
-    let replace = choice.mode == InstallMode::Replace || broken;
+    let replace = choice.mode == InstallMode::Replace || backup_mode != BackupMode::Export;
     let (taken, result) = tauri::async_runtime::spawn_blocking(move || {
         let r = (|| {
             let backup = if replace {
@@ -168,7 +168,7 @@ pub async fn install_share(
                     share::backup_config(
                         &config_path,
                         &config,
-                        broken,
+                        backup_mode,
                         &version,
                         &UserDirs::current(),
                         std::time::SystemTime::now(),

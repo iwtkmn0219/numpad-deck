@@ -38,6 +38,10 @@ export function useEditorConfig() {
   const past = useRef<Config[]>([]);
   const future = useRef<Config[]>([]);
   const timer = useRef<number | undefined>(undefined);
+  /** 저장 예약만 되고 아직 시작하지 않은 설정 (`flush`가 바로 저장한다) */
+  const pending = useRef<Config | null>(null);
+  /** 진행 중인 저장의 끝. 저장은 이 줄에 이어 붙여 하나씩만 한다. */
+  const inflight = useRef<Promise<void>>(Promise.resolve());
   /** 마지막으로 저장한(또는 받아 온) 내용. 같은 내용을 다시 저장하거나 받지 않게. */
   const lastSaved = useRef<string>("");
   /** 마지막 변경의 묶음 키와 시각 (글자 입력을 기록 하나로 묶기 위해) */
@@ -51,10 +55,9 @@ export function useEditorConfig() {
     setHistoryVersion((v) => v + 1);
   }, []);
 
-  const scheduleSave = useCallback((next: Config) => {
-    window.clearTimeout(timer.current);
-    setStatus({ kind: "saving" });
-    timer.current = window.setTimeout(async () => {
+  /** 저장한다. 앞선 저장이 끝난 뒤에 시작하고, 실패는 상태로만 알린다 (거부되지 않는다). */
+  const persist = useCallback((next: Config) => {
+    inflight.current = inflight.current.then(async () => {
       const text = canonical(next);
       if (text === lastSaved.current) {
         setStatus({ kind: "saved" });
@@ -67,8 +70,34 @@ export function useEditorConfig() {
       } catch (reason) {
         setStatus({ kind: "failed", reason: String(reason) });
       }
-    }, SAVE_DELAY_MS);
+    });
   }, []);
+
+  const scheduleSave = useCallback(
+    (next: Config) => {
+      window.clearTimeout(timer.current);
+      setStatus({ kind: "saving" });
+      pending.current = next;
+      timer.current = window.setTimeout(() => {
+        pending.current = null;
+        persist(next);
+      }, SAVE_DELAY_MS);
+    },
+    [persist],
+  );
+
+  /**
+   * 예약된 저장을 기다리지 않고 지금 하고, 진행 중인 저장까지 끝날 때까지 기다린다.
+   * 코어가 설정을 바꾸기 전(파일 가져오기)에 불러서, 마지막 고침이 백업·추가에 들어가고
+   * 늦은 저장이 새 설정을 덮어쓰지 않게 한다.
+   */
+  const flush = useCallback(async () => {
+    window.clearTimeout(timer.current);
+    const next = pending.current;
+    pending.current = null;
+    if (next) persist(next);
+    await inflight.current;
+  }, [persist]);
 
   useEffect(() => {
     let alive = true;
@@ -127,6 +156,7 @@ export function useEditorConfig() {
     (next: Config, resetHistory: boolean) => {
       // 가져오기 전 내용의 저장 예약이 새 설정을 덮어쓰지 않게
       window.clearTimeout(timer.current);
+      pending.current = null;
       setStatus({ kind: "saved" });
       const text = canonical(next);
       // 파일 감시가 먼저 같은 내용을 보내왔으면 기록은 이미 쌓였다
@@ -199,6 +229,7 @@ export function useEditorConfig() {
     status,
     update,
     adopt,
+    flush,
     forgetHistory,
     undo,
     redo,

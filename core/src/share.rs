@@ -906,17 +906,30 @@ fn backup_sort_key(file_name: &str) -> Option<(String, u32)> {
     Some((format!("{date}-{time}"), n))
 }
 
-/// 덮어쓰기 직전의 설정을 같은 폴더의 `backups/`에 남기고 최신 10개만 둔다. 만든 경로를 돌려준다.
+/// 자동 백업으로 남길 것.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackupMode {
+    /// 설정이 정상: 지금 설정을 `.npdeck`로 내보낸다.
+    Export,
+    /// 설정 파일이 깨졌고 메모리의 설정도 기본값뿐: 디스크 원본만 `.json`으로 복사한다.
+    Raw,
+    /// 설정 파일이 깨졌지만 앱은 마지막 정상 설정으로 돌고 있다: 원본 `.json`과
+    /// 메모리의 설정 `.npdeck`을 둘 다 남긴다 (같은 시각 이름).
+    Both,
+}
+
+/// 덮어쓰기 직전의 설정을 같은 폴더의 `backups/`에 남기고 최신 10개만 둔다.
 ///
-/// - 정상(`broken == false`): 지금 앱이 쓰는 설정(`config`)을 `.npdeck` 백업 파일로 내보낸다.
-///   "백업 파일 가져오기"로 되돌릴 수 있고 효과음도 담긴다. 담을 수 없는 효과음은 빼고 만든다.
-/// - 깨짐(`broken == true`): 디스크의 설정 파일이 올바른 설정이 아니므로 원본을 `.json`으로 복사한다.
+/// - `.npdeck`: 지금 앱이 쓰는 설정(`config`) 전체를 백업 파일로 내보낸다. "백업 파일 가져오기"로
+///   되돌릴 수 있고 효과음도 담긴다. 담을 수 없는 효과음은 빼고 만든다.
+/// - `.json`: 디스크의 설정 파일 원본 복사 (깨진 파일을 그대로 보존).
 ///
-/// `.json`과 `.npdeck`은 한 묶음으로 세어 오래된 것부터 지운다.
+/// `.json`과 `.npdeck`은 한 묶음으로 세어 오래된 것부터 지운다. 돌려주는 경로는 `.npdeck`을
+/// 만들었으면 그것(가져오기로 열 수 있는 쪽), 아니면 `.json`이다.
 pub fn backup_config(
     config_path: &Path,
     config: &Config,
-    broken: bool,
+    mode: BackupMode,
     app_version: &str,
     dirs: &UserDirs,
     now: SystemTime,
@@ -926,7 +939,6 @@ pub fn backup_config(
         .ok_or_else(|| ShareError::Io("no parent".into()))?
         .join("backups");
     std::fs::create_dir_all(&dir).map_err(io_err)?;
-    let ext = if broken { "json" } else { EXTENSION };
     let base = format!("config-{}", stamp(now));
     // 같은 초에 또 만들면 번호를 붙여 덮어쓰지 않는다 (두 확장자 모두 확인해 정렬 순서가 겹치지 않게).
     let taken = |name: &str| {
@@ -940,12 +952,30 @@ pub fn backup_config(
         name = format!("{base}-{n}");
         n += 1;
     }
-    let dest = dir.join(format!("{name}.{ext}"));
-    if broken {
-        std::fs::copy(config_path, &dest).map_err(io_err)?;
-    } else {
+    let json_dest = dir.join(format!("{name}.json"));
+    let npdeck_dest = dir.join(format!("{name}.{EXTENSION}"));
+    let mut made: Vec<&PathBuf> = Vec::new();
+    if mode != BackupMode::Raw {
         // 임시 파일에 쓰고 이름을 바꾸므로 덜 쓴 파일이 `config-*.npdeck`로 남지 않는다.
-        export_with(config, &Selection::All, app_version, dirs, &dest, true)?;
+        export_with(
+            config,
+            &Selection::All,
+            app_version,
+            dirs,
+            &npdeck_dest,
+            true,
+        )?;
+        made.push(&npdeck_dest);
+    }
+    if mode != BackupMode::Export {
+        if let Err(e) = std::fs::copy(config_path, &json_dest) {
+            // 반쪽만 남기지 않는다
+            if mode == BackupMode::Both {
+                let _ = std::fs::remove_file(&npdeck_dest);
+            }
+            return Err(io_err(e));
+        }
+        made.push(&json_dest);
     }
 
     let mut all: Vec<((String, u32), PathBuf)> = std::fs::read_dir(&dir)
@@ -958,12 +988,12 @@ pub fn backup_config(
         .collect();
     all.sort();
     // 방금 만든 것은 시계가 어긋나 있어도 지우지 않는다.
-    all.retain(|(_, p)| *p != dest);
-    let extra = all.len().saturating_sub(KEEP_BACKUPS - 1);
+    all.retain(|(_, p)| !made.contains(&p));
+    let extra = all.len().saturating_sub(KEEP_BACKUPS - made.len());
     for (_, old) in all.into_iter().take(extra) {
         let _ = std::fs::remove_file(old);
     }
-    Ok(dest)
+    Ok(made[0].clone())
 }
 
 #[cfg(test)]
@@ -1926,7 +1956,15 @@ mod tests {
         let (path, cfg, dirs) = backup_fixture(dir.path(), b"{}");
         let mut first = None;
         for i in 0..11u64 {
-            let p = backup_config(&path, &cfg, false, "0.6.0", &dirs, minute_after(i)).unwrap();
+            let p = backup_config(
+                &path,
+                &cfg,
+                BackupMode::Export,
+                "0.6.0",
+                &dirs,
+                minute_after(i),
+            )
+            .unwrap();
             first.get_or_insert(p);
         }
         let first = first.unwrap();
@@ -1946,9 +1984,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (path, cfg, dirs) = backup_fixture(dir.path(), b"one");
         let t = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
-        let a = backup_config(&path, &cfg, true, "0.6.0", &dirs, t).unwrap();
+        let a = backup_config(&path, &cfg, BackupMode::Raw, "0.6.0", &dirs, t).unwrap();
         std::fs::write(&path, b"two").unwrap();
-        let b = backup_config(&path, &cfg, true, "0.6.0", &dirs, t).unwrap();
+        let b = backup_config(&path, &cfg, BackupMode::Raw, "0.6.0", &dirs, t).unwrap();
         assert_ne!(a, b);
         assert_eq!(std::fs::read(&a).unwrap(), b"one");
         assert_eq!(std::fs::read(&b).unwrap(), b"two");
@@ -1957,7 +1995,7 @@ mod tests {
             "config-20010909-014640.json".len()
         );
         // 확장자가 달라도 같은 초면 번호가 겹치지 않는다
-        let c = backup_config(&path, &cfg, false, "0.6.0", &dirs, t).unwrap();
+        let c = backup_config(&path, &cfg, BackupMode::Export, "0.6.0", &dirs, t).unwrap();
         let name = |p: &Path| p.file_name().unwrap().to_string_lossy().into_owned();
         let keys: BTreeSet<_> = [&a, &b, &c]
             .iter()
@@ -1977,7 +2015,15 @@ mod tests {
         // 설정 파일이 아직 없어도 메모리의 설정을 백업한다
         let path = dir.path().join("config.json");
         let dirs = test_dirs(dir.path());
-        let p = backup_config(&path, &cfg, false, "0.6.0", &dirs, minute_after(0)).unwrap();
+        let p = backup_config(
+            &path,
+            &cfg,
+            BackupMode::Export,
+            "0.6.0",
+            &dirs,
+            minute_after(0),
+        )
+        .unwrap();
         assert_eq!(p.extension().unwrap(), "npdeck");
         assert_eq!(p.parent().unwrap(), dir.path().join("backups"));
         let b = read(&p).unwrap();
@@ -2037,7 +2083,15 @@ mod tests {
         assert!(export_to(&cfg, &Selection::All, dir.path()).is_err());
         let path = dir.path().join("config.json");
         let dirs = test_dirs(dir.path());
-        let p = backup_config(&path, &cfg, false, "0.6.0", &dirs, minute_after(0)).unwrap();
+        let p = backup_config(
+            &path,
+            &cfg,
+            BackupMode::Export,
+            "0.6.0",
+            &dirs,
+            minute_after(0),
+        )
+        .unwrap();
         let b = read(&p).unwrap();
         let page = &b.manifest.pages[0];
         assert_eq!(page.buttons.len(), 9, "버튼은 모두 남는다");
@@ -2075,10 +2129,70 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let raw = b"{ this is not valid json \xff";
         let (path, cfg, dirs) = backup_fixture(dir.path(), raw);
-        let p = backup_config(&path, &cfg, true, "0.6.0", &dirs, minute_after(0)).unwrap();
+        let p = backup_config(
+            &path,
+            &cfg,
+            BackupMode::Raw,
+            "0.6.0",
+            &dirs,
+            minute_after(0),
+        )
+        .unwrap();
         assert_eq!(p.extension().unwrap(), "json");
         assert_eq!(std::fs::read(&p).unwrap(), raw);
         assert_eq!(std::fs::read_dir(p.parent().unwrap()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn backup_both_keeps_raw_json_and_memory_npdeck() {
+        let dir = tempfile::tempdir().unwrap();
+        let raw = b"{ broken";
+        let (path, cfg, dirs) = backup_fixture(dir.path(), raw);
+        let p = backup_config(
+            &path,
+            &cfg,
+            BackupMode::Both,
+            "0.6.0",
+            &dirs,
+            minute_after(0),
+        )
+        .unwrap();
+        // 돌려주는 것은 가져올 수 있는 .npdeck
+        assert_eq!(p.extension().unwrap(), "npdeck");
+        let json = p.with_extension("json");
+        assert_eq!(std::fs::read(&json).unwrap(), raw);
+        let b = read(&p).unwrap();
+        assert_eq!(b.manifest.kind, Kind::Backup);
+        assert_eq!(b.manifest.pages[0].name, "A");
+        assert_eq!(std::fs::read_dir(p.parent().unwrap()).unwrap().count(), 2);
+        // 같은 초에 또 만들어도 두 쌍이 겹치지 않고, 회전은 두 파일을 함께 지키며 10개 안에서 돈다
+        let t = minute_after(0);
+        let q = backup_config(&path, &cfg, BackupMode::Both, "0.6.0", &dirs, t).unwrap();
+        assert_ne!(p, q);
+        assert!(q.exists() && q.with_extension("json").exists());
+        for i in 1..8u64 {
+            backup_config(
+                &path,
+                &cfg,
+                BackupMode::Both,
+                "0.6.0",
+                &dirs,
+                minute_after(i),
+            )
+            .unwrap();
+        }
+        let last = backup_config(
+            &path,
+            &cfg,
+            BackupMode::Both,
+            "0.6.0",
+            &dirs,
+            minute_after(9),
+        )
+        .unwrap();
+        assert!(last.exists() && last.with_extension("json").exists());
+        assert_eq!(std::fs::read_dir(p.parent().unwrap()).unwrap().count(), 10);
+        assert!(!p.exists());
     }
 
     #[test]
@@ -2088,8 +2202,19 @@ mod tests {
         let mut made = vec![];
         for i in 0..13u64 {
             // 번갈아 두 종류를 만든다
-            let p =
-                backup_config(&path, &cfg, i % 2 == 0, "0.6.0", &dirs, minute_after(i)).unwrap();
+            let p = backup_config(
+                &path,
+                &cfg,
+                if i % 2 == 0 {
+                    BackupMode::Raw
+                } else {
+                    BackupMode::Export
+                },
+                "0.6.0",
+                &dirs,
+                minute_after(i),
+            )
+            .unwrap();
             made.push(p);
         }
         let bdir = dir.path().join("backups");
@@ -2140,7 +2265,7 @@ mod tests {
         }
         let t = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
         let (_, config, dirs) = backup_fixture(dir.path(), b"{}");
-        let p = backup_config(&cfg, &config, false, "0.6.0", &dirs, t).unwrap();
+        let p = backup_config(&cfg, &config, BackupMode::Export, "0.6.0", &dirs, t).unwrap();
         assert!(p.exists());
         assert_eq!(std::fs::read_dir(&bdir).unwrap().count(), 10);
     }

@@ -1,6 +1,7 @@
 // 문장 버튼 자리표시자(`{날짜}`, `{시간}`, `{클립보드}` …)의 미리 보기용 펼치기.
 //
 // 코어 `core/src/text_template.rs`의 `expand`·`has_placeholders`와 같은 규칙이어야 한다.
+// (`has_placeholders`는 `placeholderRanges(text).length > 0`에 해당한다.)
 // 앱에 TS 시험 도구가 없어서, 코어 시험 사례를 아래 표로 옮겨 두고 리뷰에서 대조한다.
 // (미리 보기는 클립보드를 읽지 않는다: 부르는 쪽이 넘기는 `clipboardLabel`로 대신 보인다.
 //  그래서 코어의 클립보드 시험 — 한 번만 읽기, CRLF→LF, 글자 없음 오류 — 은 여기에 해당 없음.)
@@ -48,7 +49,9 @@
 //   { {날짜}                     SAT   ko       { 2026-10-17
 //   {a{시간}                     SAT   ko       {a14:05
 //   안녕 {날짜} {시간}!          SAT   ko       안녕 2026-10-17 14:05!
-//   hasPlaceholders: {시간} 참 · {날짜} 참 · a {clipboard} b 참 · {{날짜}} {날짜} 참 · {{시간}} 거짓 · {{x}} 거짓 · {x} 거짓 · {{{날짜}}} 거짓 · (빈 문장) 거짓
+//   placeholderRanges: "a {시간} b" → [2,6) time · "{{날짜}} {날짜}" → [7,11) date · "{{{날짜}}}" → 없음
+//                      "{날자} {x} {Date}" → 없음 · "{a{시간}" → [2,6) time · "😀{날짜}" → [2,6) date (UTF-16 위치)
+//   placeholderRanges가 비지 않음(코어 has_placeholders): {시간} 참 · {날짜} 참 · a {clipboard} b 참 · {{날짜}} {날짜} 참 · {{시간}} 거짓 · {{x}} 거짓 · {x} 거짓 · {{{날짜}}} 거짓 · (빈 문장) 거짓
 
 export type PlaceholderId = "date" | "dateLong" | "dateShort" | "time" | "weekday" | "clipboard";
 
@@ -94,7 +97,8 @@ const MONTHS_EN = [
 const WEEKDAYS_EN = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const WEEKDAYS_KO = ["일", "월", "화", "수", "목", "금", "토"];
 
-type Part = { text: string } | { place: PlaceholderId };
+/** 글자 조각, 또는 자리표시자와 원문에서의 자리(`start`..`end`, UTF-16 위치, 중괄호 포함) */
+type Part = { text: string } | { place: PlaceholderId; start: number; end: number };
 
 function lookup(name: string): PlaceholderId | undefined {
   // `NAMES["constructor"]` 같은 객체 기본 속성에 걸리지 않게 자기 속성만 본다
@@ -128,7 +132,7 @@ function parse(text: string): Part[] {
     if (place !== undefined) {
       if (buf) parts.push({ text: buf });
       buf = "";
-      parts.push({ place });
+      parts.push({ place, start: i, end: end + 1 });
       i = end + 1;
     } else {
       // ③ 그대로
@@ -138,11 +142,6 @@ function parse(text: string): Part[] {
   }
   if (buf) parts.push({ text: buf });
   return parts;
-}
-
-/** 표의 이름이 `{이름}` 꼴로 하나라도 있으면 true. `{{이름}}`으로 막은 것은 세지 않는다. */
-export function hasPlaceholders(text: string): boolean {
-  return parse(text).some((p) => "place" in p);
 }
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
@@ -167,9 +166,32 @@ function render(p: PlaceholderId, now: Date, lang: "ko" | "en", clipboardLabel: 
   }
 }
 
+/**
+ * 펼쳐지는 자리표시자의 원문 자리. 입력란 덧칠과 덩어리째 지우기가 쓴다.
+ * `{{이름}}`·모르는 이름·짝 없는 괄호는 펼쳐지지 않으므로 들어 있지 않다.
+ */
+export function placeholderRanges(text: string): { start: number; end: number; id: PlaceholderId }[] {
+  return parse(text).flatMap((p) => ("place" in p ? [{ start: p.start, end: p.end, id: p.place }] : []));
+}
+
+/** 미리 보기 조각. `value`는 펼친 값, `clipboard`는 클립보드 자리(값 대신 `clipboardLabel`). */
+export interface PreviewSegment {
+  text: string;
+  kind: "plain" | "value" | "clipboard";
+}
+
+/** 미리 보기를 조각으로. 이어 붙이면 `expandPreview`와 같다. */
+export function previewSegments(text: string, now: Date, lang: "ko" | "en", clipboardLabel: string): PreviewSegment[] {
+  return parse(text).map((p) =>
+    "text" in p
+      ? { text: p.text, kind: "plain" }
+      : { text: render(p.place, now, lang, clipboardLabel), kind: p.place === "clipboard" ? "clipboard" : "value" },
+  );
+}
+
 /** 미리 보기 글. `{클립보드}`는 `clipboardLabel`로 보이고, 클립보드는 읽지 않는다. */
 export function expandPreview(text: string, now: Date, lang: "ko" | "en", clipboardLabel: string): string {
-  return parse(text)
-    .map((p) => ("text" in p ? p.text : render(p.place, now, lang, clipboardLabel)))
+  return previewSegments(text, now, lang, clipboardLabel)
+    .map((s) => s.text)
     .join("");
 }

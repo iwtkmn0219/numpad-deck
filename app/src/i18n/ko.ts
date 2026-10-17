@@ -324,14 +324,16 @@ export const ko = {
         },
         // 끼워 넣기 메뉴에서 클립보드 항목 옆에 보이는 예시
         clipboardExample: "복사해 둔 글자",
-        previewLabel: "지금 누르면:",
+        previewLabel: "누르면 이렇게 입력돼요",
         // 미리 보기는 클립보드를 읽지 않고 이 글로 대신 보여 준다
         clipboardSample: "(복사한 글자)",
         method: "보내는 방식",
         methodPaste: "붙여넣기 (권장)",
         methodType: "직접 입력",
         methodTypeHint: "붙여넣기가 안 되는 곳(일부 게임·원격 화면·붙여넣기를 막은 입력란)용",
-        multilineWarn: "채팅 창에서는 줄마다 전송될 수 있어요",
+        multilineWarnTitle: "줄을 바꿀 때 Enter 키가 눌려요",
+        multilineWarnBody: "직접 입력 방식은 줄바꿈마다 Enter를 보냅니다. 채팅 창에서는 줄마다 따로 전송될 수 있어요.",
+        switchToPaste: "붙여넣기로 바꾸기",
       },
       media: { command: "할 일" },
       stopSounds: {

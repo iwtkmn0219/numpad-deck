@@ -332,14 +332,16 @@ export const en: Dict = {
         },
         // Example shown next to the Clipboard item in the Insert menu
         clipboardExample: "copied text",
-        previewLabel: "When pressed:",
+        previewLabel: "Pressing it types:",
         // The preview never reads the clipboard; it shows this instead
         clipboardSample: "(copied text)",
         method: "How to send",
         methodPaste: "Paste (recommended)",
         methodType: "Type it out",
         methodTypeHint: "For places where pasting doesn't work (some games, remote screens, fields that block pasting)",
-        multilineWarn: "In chat windows, each line may be sent as its own message",
+        multilineWarnTitle: "Line breaks are sent as Enter",
+        multilineWarnBody: "Type it out presses Enter at each line break. In chat windows, each line may be sent as its own message.",
+        switchToPaste: "Switch to Paste",
       },
       media: { command: "Action" },
       stopSounds: {

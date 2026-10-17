@@ -18,7 +18,8 @@ use windows::Win32::Foundation::{
 };
 use windows::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, EnumClipboardFormats, GetClipboardData,
-    GetClipboardSequenceNumber, OpenClipboard, RegisterClipboardFormatW, SetClipboardData,
+    GetClipboardFormatNameW, GetClipboardSequenceNumber, OpenClipboard, RegisterClipboardFormatW,
+    SetClipboardData,
 };
 use windows::Win32::System::Memory::{
     GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE,
@@ -98,10 +99,14 @@ pub fn snapshot() -> Result<Snapshot, String> {
         if should_skip_format(format) || private.contains(&format) {
             continue;
         }
+        // OLE 데이터 객체 정보는 소유자 없이 되돌리면 낡은 정보가 남아 OleGetClipboard가
+        // 잘못 쓸 수 있다. 이름으로 가린다.
+        if format_name(format).is_some_and(|name| should_skip_format_name(&name)) {
+            continue;
+        }
         let handle = unsafe { GetClipboardData(format) }
-            .map_err(|e| format!("GetClipboardData({format}): {e}"))?;
-        let locked =
-            Locked::new(HGLOBAL(handle.0)).map_err(|e| format!("GlobalLock({format}): {e}"))?;
+            .map_err(|e| win_error(&format!("GetClipboardData({format})"), &e))?;
+        let locked = Locked::new(HGLOBAL(handle.0)).map_err(|e| format!("format {format}: {e}"))?;
         let bytes = locked.bytes();
         total = total.saturating_add(bytes.len());
         if !within_limit(total) {
@@ -112,8 +117,16 @@ pub fn snapshot() -> Result<Snapshot, String> {
     Ok(Snapshot { formats })
 }
 
+/// 지금 클립보드 순번.
+pub fn sequence() -> u32 {
+    unsafe { GetClipboardSequenceNumber() }
+}
+
 /// 문장을 클립보드에 넣는다(줄바꿈은 `\r\n`). 기록 제외 형식을 같이 넣고, 닫은 뒤의
 /// 클립보드 순번을 돌려준다. [`restore`]에 그대로 넘긴다.
+///
+/// `Err`이면 클립보드가 이미 비워졌을 수 있다(열기 전에 실패했으면 그대로다). 부르는 쪽은
+/// 이때도 `restore(snapshot, sequence())`로 보관한 내용을 되돌려야 한다.
 pub fn put_text_private(text: &str) -> Result<u32, String> {
     let private = private_formats()?;
     let mut bytes: Vec<u8> = to_crlf(text)
@@ -125,39 +138,49 @@ pub fn put_text_private(text: &str) -> Result<u32, String> {
     {
         let _clipboard = open()?;
         empty()?;
-        set_bytes(CF_UNICODETEXT.0 as u32, &bytes)?;
-        set_private(&private)?;
+        // 기록 제외 형식을 먼저 넣는다. 하나라도 실패하면 다시 비워서, 표시 없는 문장이
+        // 닫을 때 그대로 공개되지 않게 한다.
+        let result =
+            set_private(&private).and_then(|()| set_bytes(CF_UNICODETEXT.0 as u32, &bytes));
+        if let Err(e) = result {
+            let _ = empty();
+            return Err(e);
+        }
     }
     // 닫은 뒤에 읽는다. 닫은 다음부터는 다른 앱이 바꿔야만 순번이 바뀐다.
-    Ok(unsafe { GetClipboardSequenceNumber() })
+    Ok(sequence())
 }
 
 /// 보관한 내용을 되돌린다. 순번이 `expected_seq`와 다르면 그사이 사용자나 다른 앱이
 /// 클립보드를 바꾼 것이므로 아무것도 하지 않고 `Ok(false)`. 빈 스냅숏이면 비우기만 한다.
+///
+/// 기록 제외 형식을 먼저 넣고, 그게 실패하면 다시 비운 채로 `Err`이다(표시 없는 내용을
+/// 공개하지 않는다). 표시를 넣은 뒤에는 한 형식이 실패해도 나머지를 되살리고 첫 오류를 알린다.
 pub fn restore(snapshot: Snapshot, expected_seq: u32) -> Result<bool, String> {
-    if !should_restore(expected_seq, unsafe { GetClipboardSequenceNumber() }) {
+    if !should_restore(expected_seq, sequence()) {
         return Ok(false);
     }
     let private = private_formats()?;
     let _clipboard = open()?;
     // 확인과 열기 사이에 바뀌었을 수 있다. 열어 둔 동안에는 아무도 못 바꾸므로 한 번 더 본다.
-    if !should_restore(expected_seq, unsafe { GetClipboardSequenceNumber() }) {
+    if !should_restore(expected_seq, sequence()) {
         return Ok(false);
     }
     empty()?;
     if snapshot.formats.is_empty() {
         return Ok(true);
     }
-    // 한 형식이 실패해도 나머지는 되살린다. 오류는 처음 것만 알린다.
+    // 이미 기록에 있던 내용이 한 번 더 쌓이지 않게 되돌린 내용에도 붙인다. 먼저 넣는다.
+    if let Err(e) = set_private(&private) {
+        let _ = empty();
+        return Err(e);
+    }
+    // 표시가 붙었으므로 한 형식이 실패해도 나머지는 되살린다. 오류는 처음 것만 알린다.
     let mut first_error = None;
     for (format, bytes) in &snapshot.formats {
         if let Err(e) = set_bytes(*format, bytes) {
             first_error.get_or_insert(e);
         }
-    }
-    // 이미 기록에 있던 내용이 한 번 더 쌓이지 않게 되돌린 내용에도 붙인다.
-    if let Err(e) = set_private(&private) {
-        first_error.get_or_insert(e);
     }
     match first_error {
         None => Ok(true),
@@ -184,6 +207,18 @@ fn should_skip_format(format: u32) -> bool {
     skipped.iter().any(|f| f.0 as u32 == format)
         || in_range(CF_PRIVATEFIRST.0, CF_PRIVATELAST.0)
         || in_range(CF_GDIOBJFIRST.0, CF_GDIOBJLAST.0)
+}
+
+/// 이름으로 보관하지 않는 등록 형식. OLE 클립보드가 쓰는 데이터 객체 정보다.
+fn should_skip_format_name(name: &str) -> bool {
+    matches!(name, "DataObject" | "Ole Private Data")
+}
+
+/// 등록 형식의 이름. 미리 정의된 형식이나 실패면 `None`.
+fn format_name(format: u32) -> Option<String> {
+    let mut buf = [0u16; 256];
+    let len = unsafe { GetClipboardFormatNameW(format, &mut buf) };
+    (len > 0).then(|| String::from_utf16_lossy(&buf[..len as usize]))
 }
 
 /// 보관 합계가 한도 안인지.
@@ -222,14 +257,14 @@ fn open() -> Result<Clipboard, String> {
             Err(e) => last = Some(e),
         }
     }
-    Err(format!(
-        "OpenClipboard: {}",
-        last.map(|e| e.to_string()).unwrap_or_default()
-    ))
+    Err(match last {
+        Some(e) => win_error("OpenClipboard", &e),
+        None => "OpenClipboard failed".into(),
+    })
 }
 
 fn empty() -> Result<(), String> {
-    unsafe { EmptyClipboard() }.map_err(|e| format!("EmptyClipboard: {e}"))
+    unsafe { EmptyClipboard() }.map_err(|e| win_error("EmptyClipboard", &e))
 }
 
 /// 잠근 `HGLOBAL`. 놓을 때 푼다 — 잠금과 풀기가 늘 짝을 이룬다.
@@ -240,15 +275,16 @@ struct Locked {
 }
 
 impl Locked {
-    fn new(handle: HGLOBAL) -> windows::core::Result<Self> {
+    /// 실패 문구는 고정이다. GetLastError가 0일 때도 있어 오류 코드로는 뜻이 없다.
+    fn new(handle: HGLOBAL) -> Result<Self, &'static str> {
         // 크기는 블록 자체에서 얻는다. 0은 실패이거나 버려진 블록이라 읽을 수 없다.
         let len = unsafe { GlobalSize(handle) };
         if len == 0 {
-            return Err(windows::core::Error::from_thread());
+            return Err("GlobalSize returned 0 (invalid or discarded memory)");
         }
         let ptr = unsafe { GlobalLock(handle) } as *mut u8;
         if ptr.is_null() {
-            return Err(windows::core::Error::from_thread());
+            return Err("GlobalLock returned NULL");
         }
         Ok(Self { handle, ptr, len })
     }
@@ -276,7 +312,7 @@ fn set_bytes(format: u32, bytes: &[u8]) -> Result<(), String> {
     // GMEM_MOVEABLE: 클립보드에 넣는 메모리는 옮길 수 있어야 한다. 0바이트 블록은 버려진
     // 블록이 되므로 최소 1바이트를 잡는다.
     let handle = unsafe { GlobalAlloc(GMEM_MOVEABLE, bytes.len().max(1)) }
-        .map_err(|e| format!("GlobalAlloc: {e}"))?;
+        .map_err(|e| win_error("GlobalAlloc", &e))?;
     match Locked::new(handle) {
         Ok(mut locked) => {
             // 블록이 요청보다 클 수 있다. 남는 부분은 0으로 채운다.
@@ -286,7 +322,7 @@ fn set_bytes(format: u32, bytes: &[u8]) -> Result<(), String> {
         }
         Err(e) => {
             let _ = unsafe { GlobalFree(Some(handle)) };
-            return Err(format!("GlobalLock: {e}"));
+            return Err(e.to_string());
         }
     }
     // 잠금을 푼 뒤에 넘긴다.
@@ -296,7 +332,7 @@ fn set_bytes(format: u32, bytes: &[u8]) -> Result<(), String> {
             // 실패하면 시스템이 가져가지 않았으므로 우리가 푼다. GlobalFree는 성공하면
             // NULL을 돌려줘 windows-rs에서는 Err 모양이므로 결과는 보지 않는다.
             let _ = unsafe { GlobalFree(Some(handle)) };
-            Err(format!("SetClipboardData({format}): {e}"))
+            Err(win_error(&format!("SetClipboardData({format})"), &e))
         }
     }
 }
@@ -309,20 +345,33 @@ fn set_private(private: &[u32; 3]) -> Result<(), String> {
     Ok(())
 }
 
-/// 기록 제외 형식 번호. 처음 한 번 등록해 둔다. 등록에 실패하면 기록에 남을 수 있으므로
-/// `Err` — 부르는 쪽은 직접 입력으로 대신 보낸다.
+/// 기록 제외 형식 번호. 셋 다 등록되면 기억해 두고 다시 쓴다. 등록에 실패하면(0) 기억하지
+/// 않고 다음에 다시 시도한다. 실패하면 기록에 남을 수 있으므로 `Err` — 부르는 쪽은 직접
+/// 입력으로 대신 보낸다.
 fn private_formats() -> Result<[u32; 3], String> {
     static FORMATS: OnceLock<[u32; 3]> = OnceLock::new();
-    let formats = *FORMATS.get_or_init(|| {
-        PRIVATE_FORMAT_NAMES.map(|name| {
-            let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
-            unsafe { RegisterClipboardFormatW(PCWSTR(wide.as_ptr())) }
-        })
+    if let Some(&formats) = FORMATS.get() {
+        return Ok(formats);
+    }
+    let formats = PRIVATE_FORMAT_NAMES.map(|name| {
+        let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
+        unsafe { RegisterClipboardFormatW(PCWSTR(wide.as_ptr())) }
     });
     if formats.contains(&0) {
         return Err("RegisterClipboardFormatW failed".into());
     }
-    Ok(formats)
+    // 같은 이름은 늘 같은 번호라 동시에 등록해도 결과가 같다.
+    Ok(*FORMATS.get_or_init(|| formats))
+}
+
+/// windows-rs 오류를 문구로. GetLastError가 0이면 오류에 S_OK가 담겨 뜻이 없으므로
+/// 고정 문구만 쓴다.
+fn win_error(what: &str, e: &windows::core::Error) -> String {
+    if e.code().is_ok() {
+        format!("{what} failed")
+    } else {
+        format!("{what} failed: {e}")
+    }
 }
 
 #[cfg(test)]
@@ -341,6 +390,15 @@ mod tests {
         assert!(!should_skip_format(CF_HDROP.0 as u32));
         // 등록 형식(HTML·RTF 등)은 0xC000 이상이고 HGLOBAL이다.
         assert!(!should_skip_format(0xC0FF));
+    }
+
+    #[test]
+    fn skips_ole_private_format_names() {
+        assert!(should_skip_format_name("DataObject"));
+        assert!(should_skip_format_name("Ole Private Data"));
+        assert!(!should_skip_format_name("HTML Format"));
+        assert!(!should_skip_format_name("Rich Text Format"));
+        assert!(!should_skip_format_name("dataobject"));
     }
 
     #[test]

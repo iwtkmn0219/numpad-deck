@@ -54,6 +54,7 @@ pub fn hotkey(keys: &[HotkeyKey]) -> windows::core::Result<()> {
 /// 한 번에 몰아 보내지 않고 [`type_plan`]대로 나눠 사이에 [`TYPE_PAUSE`]만큼 쉰다. 엑셀은 칸의
 /// 첫 글자로 편집을 시작하는 사이 뒤 글자가 오면 첫 글자를 앞에서 친 글자로 바꾸고, 새 메모장은
 /// Enter와 뒤 글자가 붙어 오면 순서를 섞는다(직접 입력 진단 `deck-probe --type-test`로 실측).
+/// 그래서 줄마다 약 90ms(3줄 약 0.2초, 10줄 약 0.9초) 동안 부른 스레드를 막는다.
 pub fn text(text: &str) -> windows::core::Result<()> {
     let mut inputs = release_held_modifiers();
     for piece in type_plan(text) {
@@ -306,6 +307,11 @@ mod tests {
             ]
         );
         assert_eq!(type_plan("a\rb"), [Chars("a"), Pause, Chars("b")]);
+        assert_eq!(type_plan("\r"), []);
+        assert_eq!(
+            type_plan("\t가나"),
+            [Key(0x09), Pause, Chars("가"), Pause, Chars("나")]
+        );
     }
 
     #[test]

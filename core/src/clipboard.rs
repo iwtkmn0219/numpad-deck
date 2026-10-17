@@ -18,8 +18,8 @@ use windows::Win32::Foundation::{
 };
 use windows::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, EnumClipboardFormats, GetClipboardData,
-    GetClipboardFormatNameW, GetClipboardSequenceNumber, OpenClipboard, RegisterClipboardFormatW,
-    SetClipboardData,
+    GetClipboardFormatNameW, GetClipboardSequenceNumber, IsClipboardFormatAvailable, OpenClipboard,
+    RegisterClipboardFormatW, SetClipboardData,
 };
 use windows::Win32::System::Memory::{
     GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE,
@@ -85,10 +85,13 @@ pub fn read_text() -> Option<String> {
 }
 
 /// 지금 클립보드 내용을 보관한다. 합계가 32MiB를 넘거나 한 형식이라도 읽지 못하면
-/// `Err` — 일부만 보관하면 되돌릴 때 사용자 클립보드를 잃기 때문이다.
+/// `Err` — 일부만 보관하면 되돌릴 때 사용자 클립보드를 잃기 때문이다. 다만 OLE 데이터
+/// 객체가 알리기만 하고 주지 않는 등록 형식은 건너뛴다(`may_skip_unreadable`).
 pub fn snapshot() -> Result<Snapshot, String> {
     let private = private_formats()?;
     let _clipboard = open()?;
+    let ole = is_ole_clipboard();
+    let mut skipped = 0usize;
     let mut formats = Vec::new();
     let mut total = 0usize;
     let mut format = 0u32;
@@ -117,8 +120,20 @@ pub fn snapshot() -> Result<Snapshot, String> {
             Some(name) => format!("{format} \"{name}\""),
             None => format.to_string(),
         };
-        let handle = unsafe { GetClipboardData(format) }
-            .map_err(|e| win_error(&format!("GetClipboardData({label})"), &e))?;
+        // NULL이면 windows-rs는 GetLastError로 Err를 만든다. 오류 없는 NULL(코드가 S_OK)과
+        // 진짜 실패를 가르려고 먼저 지운다.
+        unsafe { SetLastError(ERROR_SUCCESS) };
+        let handle = match unsafe { GetClipboardData(format) } {
+            Ok(handle) => handle,
+            // OLE 클립보드는 데이터 객체가 HGLOBAL로 주지 않는 등록 형식도 알린다(메모장 글자의
+            // `EnterpriseDataProtectionId` 등). 그런 형식은 오류 없이 NULL이고 되돌릴 수도 없다.
+            Err(e) if may_skip_unreadable(format, name.as_deref(), ole, e.code().is_ok()) => {
+                eprintln!("클립보드 보관: 읽을 수 없는 형식 {label} 건너뜀");
+                skipped += 1;
+                continue;
+            }
+            Err(e) => return Err(win_error(&format!("GetClipboardData({label})"), &e)),
+        };
         let locked = Locked::new(HGLOBAL(handle.0)).map_err(|e| format!("format {label}: {e}"))?;
         let bytes = locked.bytes();
         total = total.saturating_add(bytes.len());
@@ -126,6 +141,10 @@ pub fn snapshot() -> Result<Snapshot, String> {
             return Err(format!("clipboard larger than {SNAPSHOT_LIMIT} bytes"));
         }
         formats.push((format, bytes.to_vec()));
+    }
+    // 건너뛰기만 하고 하나도 못 읽었으면 되돌릴 것이 없다. 비우게 되므로 실패로 본다.
+    if skipped > 0 && formats.is_empty() {
+        return Err(format!("no readable clipboard format ({skipped} skipped)"));
     }
     Ok(Snapshot { formats })
 }
@@ -256,6 +275,29 @@ fn should_skip_format_name(name: &str) -> bool {
             | "FileGroupDescriptor"
             | "FileGroupDescriptorW"
     )
+}
+
+/// 읽지 못한 형식을 건너뛰어도 되는지. OLE 클립보드(`DataObject`가 있음)의 등록 형식이
+/// 오류 코드 없이 NULL일 때만 — 데이터 객체가 그 형식을 HGLOBAL로 주지 않는 것이다.
+/// 미리 정의된 형식(글자·그림·파일), 서식 있는 내용 형식(`is_content_format_name`), 다른
+/// 실패는 여전히 보관 실패로 본다 — 잠깐 못 읽은 것을 빼고 되돌리면 서식을 잃는다.
+fn may_skip_unreadable(format: u32, name: Option<&str>, ole: bool, no_error_code: bool) -> bool {
+    ole && no_error_code && format >= 0xC000 && !name.is_some_and(is_content_format_name)
+}
+
+/// 건너뛰면 안 되는 등록 형식: 웹·오피스·그림의 서식 있는 내용.
+fn is_content_format_name(name: &str) -> bool {
+    matches!(
+        name,
+        "HTML Format" | "Rich Text Format" | "PNG" | "GIF" | "JFIF" | "Csv" | "XML Spreadsheet"
+    ) || name.starts_with("Biff")
+}
+
+/// 열린 클립보드가 OLE 데이터 객체로 채워졌는지(`DataObject` 형식이 있는지).
+fn is_ole_clipboard() -> bool {
+    let wide: Vec<u16> = "DataObject".encode_utf16().chain(Some(0)).collect();
+    let format = unsafe { RegisterClipboardFormatW(PCWSTR(wide.as_ptr())) };
+    format != 0 && unsafe { IsClipboardFormatAvailable(format) }.is_ok()
 }
 
 /// 등록 형식의 이름. 미리 정의된 형식이나 실패면 `None`.
@@ -447,6 +489,37 @@ mod tests {
         assert!(!should_skip_format_name("HTML Format"));
         assert!(!should_skip_format_name("Rich Text Format"));
         assert!(!should_skip_format_name("dataobject"));
+    }
+
+    #[test]
+    fn skips_unreadable_only_for_ole_registered_formats() {
+        let edp = Some("EnterpriseDataProtectionId");
+        assert!(may_skip_unreadable(0xC0BF, edp, true, true));
+        assert!(may_skip_unreadable(0xC0BF, None, true, true));
+        // OLE가 아니거나, 오류 코드가 있거나, 미리 정의된 형식이면 보관 실패.
+        assert!(!may_skip_unreadable(0xC0BF, edp, false, true));
+        assert!(!may_skip_unreadable(0xC0BF, edp, true, false));
+        assert!(!may_skip_unreadable(
+            CF_UNICODETEXT.0 as u32,
+            None,
+            true,
+            true
+        ));
+        assert!(!may_skip_unreadable(CF_HDROP.0 as u32, None, true, true));
+        // 서식 있는 내용은 건너뛰지 않는다.
+        for name in [
+            "HTML Format",
+            "Rich Text Format",
+            "PNG",
+            "Csv",
+            "Biff12",
+            "Biff8",
+        ] {
+            assert!(
+                !may_skip_unreadable(0xC0BF, Some(name), true, true),
+                "{name}"
+            );
+        }
     }
 
     #[test]
